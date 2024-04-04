@@ -1,0 +1,25 @@
+{
+  "name": "simsoft/console",
+  "description": "Console application. Built from Symfony/Console in Laravel style.",
+  "keywords": ["console", "command", "symfony", "php", "simsoft"],
+  "type": "library",
+  "require": {
+    "php": "^8",
+    "symfony/console": "^7",
+    "symfony/lock": "^7.0"
+  },
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "Simsoft\\Console\\": "src"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Example\\": "example"
+    }
+  },
+  "scripts": {
+    "test": "phpunit tests"
+  }
+}

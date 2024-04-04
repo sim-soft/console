@@ -1,0 +1,31 @@
+#!/usr/bin/env php
+<?php
+
+require_once dirname(__DIR__) . '/vendor/autoload.php';
+
+use Simsoft\Console\Application;
+
+Application::command('example:closure:command', function() {
+    $this->info('Hello World!');
+})->purpose('Simple closure command');
+
+Application::command('example:closure:command2', function() {
+    $name = $this->argument('name');
+    $this->info("I got your name: $name");
+})->purpose('Get user name')->input(function(){
+    $this->addArgument('name', \Symfony\Component\Console\Input\InputArgument::REQUIRED);
+});
+
+//Application::call('example:closure:command2', ['name' => 'Marry']);
+
+$status = Application::make()
+    ->withCommands([
+        \Example\Commands\HelloWorldCommand::class,
+        \Example\Commands\FriendlyCommand::class,
+        \Example\Commands\QuestionsCommand::class,
+        \Example\Commands\WinnersCommand::class,
+        \Example\Commands\MoneyComeCommand::class,
+    ])
+    ->run();
+
+exit($status);
