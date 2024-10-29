@@ -24,7 +24,7 @@ $status = Application::make()
 
 exit($status);
 ```
-## Create a Simple Command
+### Create a Simple Command
 Create a simple HelloWorldCommand class.
 ```php
 <?php
@@ -45,6 +45,17 @@ class HelloWorldCommand extends Command
     }
 }
 ```
+
+### Execute command
+Execute the following command in console window.
+```shell
+php console.php screen:welcome
+# Output: Hello World
+```
+
+
+
+
 ## Add Console Arguments and Options
 For detail tutorial, please refer to [Symfony Console: Console Input (Arguments & Options)](https://symfony.com/doc/current/console/input.html).
 ```php
@@ -302,7 +313,5 @@ class AppController
     }
 }
 ```
-
-
 ## License
 The Simsoft Validator is licensed under the MIT License. See the [LICENSE](LICENSE) file for details
