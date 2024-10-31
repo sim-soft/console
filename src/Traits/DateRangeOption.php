@@ -103,7 +103,7 @@ trait DateRangeOption
 
         $month = $this->option($monthName, $defaultMonth);
         if ($month) {
-            $monthDT = date_create_from_format('Y-m', $month);
+            $monthDT = date_create_from_format('Y-m-d', "$month-01");
             !$monthDT && throw new Exception($monthError);
             $from = $monthDT->format('Y-m-01');
             $to = $monthDT->format('Y-m-t');

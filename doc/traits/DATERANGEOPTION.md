@@ -1,6 +1,6 @@
 # DateRangeOption Input
-
-## Basic usage
+Get date range input from command line.
+## Basic Setup
 ```php
 <?php
 

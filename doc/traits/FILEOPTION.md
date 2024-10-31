@@ -1,6 +1,6 @@
 # FileOption Input
-
-## Basic usage
+Get filename input from command line.
+## Basic Setup
 ```php
 <?php
 
@@ -42,7 +42,6 @@ class ImportFileCommand extends Command
     }
 }
 ```
-
 ## Command Examples
 ```shell
 php console.php import:file --file-1=fileA.xlsx,fileB.xlsx,fileC.xlsx --file-2=file-a,file-b,file-c --file-3=single-file.xlsx
