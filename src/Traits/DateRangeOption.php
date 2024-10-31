@@ -115,14 +115,14 @@ trait DateRangeOption
         if ($from) {
             $fromDate = date_create_immutable_from_format('Y-m-d', $from);
             !$fromDate && throw new Exception($fromDateError);
-
-            if ($to) {
-                $toDate = date_create_immutable_from_format('Y-m-d', $to);
-                !$toDate && throw new Exception($toDateError);
-
-                $fromDate > $toDate && throw new Exception($toDateIsLargerError);
-            }
         }
+
+        if ($to) {
+            $toDate = date_create_immutable_from_format('Y-m-d', $to);
+            !$toDate && throw new Exception($toDateError);
+        }
+
+        $toDate != null && $fromDate > $toDate && throw new Exception($toDateIsLargerError);
 
         return [$fromDate, $toDate];
     }
