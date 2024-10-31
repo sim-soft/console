@@ -27,32 +27,30 @@ class ImportFileCommand extends Command
 
     protected function handle(): void
     {
-        $files = $this->fileOption('file-1'); // handle input string as multiple filename separated by commas. default behavior.
+        $filename = $this->fileOption('file-1'); // Get input as single filename.
+        echo $filename;
+
+        $files = $this->fileOption('file-2', multiple: false); // handle input string as multiple filename separated by commas. default behavior.
         foreach($files as $filename) {
             echo $filename;
         }
 
-        $files = $this->fileOption('file-2', fileExtension: 'xlsx');
-        foreach($files as $filename) {
-            echo $filename;
-        }
-
-        $filename = $this->fileOption('file-3', multiple: false); // handle input as single filename.
+        $filename = $this->fileOption('file-3', fileExtension: 'xlsx');
         echo $filename;
     }
 }
 ```
 ## Command Examples
 ```shell
-php console.php import:file --file-1=fileA.xlsx,fileB.xlsx,fileC.xlsx --file-2=file-a,file-b,file-c --file-3=single-file.xlsx
-# Output:
+php console.php import:file --file-1=single-file.xlsx --file-2=fileA.xlsx,fileB.xlsx,fileC.xlsx --file-3=sample-file
+# file-1 Output:
+# single-file.xlsx
+#
+# file-2 Output:
 # fileA.xlsx
 # fileB.xlsx
 # fileC.xlsx
 #
-# file-a.xlsx
-# file-b.xlsx
-# file-c.xlsx
-#
-# single-file.xlsx
+# file-3 Output:
+# sample-file.xlsx
 ```

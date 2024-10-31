@@ -40,14 +40,14 @@ trait FileOption
      *
      * @param string $name Input name.
      * @param string|string[]|null $default Default value.
-     * @param bool $multiple Handle multiple file names. Default: true.
+     * @param bool $multiple Handle multiple file names. Default: false.
      * @param string|null $fileExtension File extension.
      * @return string|array|null
      */
     protected function fileOption(
         string $name = 'file',
         string|array|null $default = null,
-        bool $multiple = true,
+        bool $multiple = false,
         ?string $fileExtension = null,
     ): string|array|null
     {
