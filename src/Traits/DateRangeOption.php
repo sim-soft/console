@@ -8,6 +8,9 @@ use Symfony\Component\Console\Input\InputOption;
 
 /**
  * Optional date range trait.
+ *
+ * @method addOption(string $name, string|array|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array|\Closure $suggestedValues = []): static
+ * @method option(string $name, mixed $default = null): mixed
  */
 trait DateRangeOption
 {
@@ -29,7 +32,7 @@ trait DateRangeOption
      * @return void
      */
     protected function addDateRangeOption(
-        string $monthName = 'for-month',
+        string $monthName = 'month',
         string $fromDateName = 'from-date',
         string $toDateName = 'to-date',
 
@@ -85,7 +88,7 @@ trait DateRangeOption
      * @throws Exception
      */
     protected function dateRangeOption(
-        string $monthName = 'for-month',
+        string $monthName = 'month',
         string $fromDateName = 'from-date',
         string $toDateName = 'to-date',
 
