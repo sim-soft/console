@@ -6,6 +6,9 @@ use Symfony\Component\Console\Input\InputOption;
 
 /**
  * Trait FileOption
+ *
+ * @method addOption(string $name, string|array|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array|\Closure $suggestedValues = []): static
+ * @method option(string $name, mixed $default = null): mixed
  */
 trait FileOption
 {
