@@ -1,12 +1,23 @@
 # Simsoft Console
-A console application, built from Symfony/Console
+A console application wrapper from Symfony/Console, inspired by Laravel.
 
-## Install
+1. [Installation](#installation)
+2. [Basic Usage](#basic_usage)
+   1. [Create Simple Command](#simple_command)
+   2. [Create Closure Command](#closure_command)
+3. [Console Input (Arguments and Options)](#console_input)
+4. [Formatter Helper (Writing Output)](#formatter_helper)
+5. [Question Helper](#question_helper)
+6. [Table and Progress Bar](#table_progress_bar)
+7. [How to Call Other Commands](#call_other_commands)
+8. [How to Call a Command from a Controller](#call_from_controller)
+
+## <a id="installation"></a>Installation
 ```shell
 composer require simsoft/console
 ```
 
-## Basic Usage
+## <a id="basic_usage"></a>Basic Usage
 Setup in bootstrap or entry script file.
 ###### console.php
 ```php
@@ -24,7 +35,7 @@ $status = Application::make()
 
 exit($status);
 ```
-### Create a Simple Command
+### <a id="simple_command"></a>Create Simple Command
 Create a simple HelloWorldCommand class.
 ```php
 <?php
@@ -45,18 +56,53 @@ class HelloWorldCommand extends Command
     }
 }
 ```
-
-### Execute command
 Execute the following command in console window.
 ```shell
 php console.php screen:welcome
 # Output: Hello World
 ```
+## <a id="closure_command"></a>Create Closure Command
+### Example Usage
+```php
+<?php
+declare(strict_types=1);
+require "vendor/autoload.php";
 
+use Simsoft\Console\Application;
 
+Application::command('example:closure:command', function() {
+    $this->info('Hello World!');
+})
 
+$status = Application::make()->run();
+```
+Execute the closure command
+```shell
+php console.php example:closure:command
+# output: Hello World
+```
 
-## Add Console Arguments and Options
+Define closure command with description.
+```php
+Application::command('example:closure:command', function() {
+    $this->info('Hello World!');
+})->purpose('Simple closure command');
+```
+Define closure command with inputs.
+```php
+use Symfony\Component\Console\Input\InputArgument;
+
+Application::command('example:closure:command2', function() {
+    $name = $this->argument('name');
+    $this->info("I got your name: $name");
+})
+->purpose('Get user name')
+->input(function(){
+    $this->addArgument('name', InputArgument::REQUIRED, 'Name required');
+});
+```
+
+## <a id="console_input"></a>Console Input (Arguments and Options)
 For detail tutorial, please refer to [Symfony Console: Console Input (Arguments & Options)](https://symfony.com/doc/current/console/input.html).
 ```php
 <?php
@@ -110,41 +156,7 @@ class HelloWorldCommand extends Command
     }
 }
 ```
-## Closure Command
-### Example Usage
-```php
-<?php
-declare(strict_types=1);
-require "vendor/autoload.php";
-
-use Simsoft\Console\Application;
-
-Application::command('example:closure:command', function() {
-    $this->info('Hello World!');
-})
-
-$status = Application::make()->run();
-```
-Define closure command with description.
-```php
-Application::command('example:closure:command', function() {
-    $this->info('Hello World!');
-})->purpose('Simple closure command');
-```
-Define closure command with inputs.
-```php
-use Symfony\Component\Console\Input\InputArgument;
-
-Application::command('example:closure:command2', function() {
-    $name = $this->argument('name');
-    $this->info("I got your name: $name");
-})
-->purpose('Get user name')
-->input(function(){
-    $this->addArgument('name', InputArgument::REQUIRED, 'Name required');
-});
-```
-## Writing Output
+## <a id="formatter_helper"></a>Formatter Helper (Writing Output)
 ```php
 /**
  * @throws \Throwable
@@ -161,7 +173,7 @@ protected function handle(): void
     $this->newLine(3);                  // Write three blank lines
 }
 ```
-## Prompting for Input
+## <a id="question_helper"></a>Question Helper
 ```php
 /**
  * @throws \Throwable
@@ -192,7 +204,7 @@ protected function handle(): void
     $this->info("You have selected $myChoice");
 }
 ```
-## Table and Progress Bar
+## <a id="table_progress_bar"></a>Table and Progress Bar
 ### Tables
 ```php
 protected function handle(): void
@@ -244,7 +256,7 @@ protected function handle(): void
     $bar->finish();
 }
 ```
-## Calling Commands From Other Commands
+## <a id="call_other_commands"></a>How to Call Other Commands
 ```php
 protected function handle(): void
 {
@@ -261,7 +273,7 @@ protected function handle(): void
     ]);
 }
 ```
-## Calling Commands From Controller
+## <a id="call_from_controller"></a>How to Call a Command from a Controller
 ### Register commands in bootstrap index.php
 ```php
 <?php

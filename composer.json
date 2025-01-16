@@ -1,6 +1,6 @@
 {
   "name": "simsoft/console",
-  "description": "Console application. Built from Symfony/Console in Laravel style.",
+  "description": "Console application wrapper of Symfony/Console, inspired by Laravel.",
   "keywords": ["console", "command", "symfony", "php", "simsoft"],
   "type": "library",
   "require": {
