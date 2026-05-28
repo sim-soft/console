@@ -53,10 +53,8 @@ class CommandBuilder
     public function build(): ClosureCommand
     {
         $command = new ClosureCommand($this->name, $this->inputCallback);
-        $command::$name = $this->name;
-        $command::$description = $this->description;
         $command->setDescription($this->description);
-        $command::$callback = $this->callback;
+        $command->setHandler($this->callback);
         return $command;
     }
 }

@@ -1,0 +1,251 @@
+<?php
+
+namespace Simsoft\Console\Commands;
+
+use Simsoft\Console\Command;
+use Simsoft\Console\Schedule;
+use Simsoft\Console\Scheduler;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Lock\LockFactory;
+use Symfony\Component\Lock\Store\FlockStore;
+use Throwable;
+
+/**
+ * Class ScheduleRunCommand
+ *
+ * Runs all due scheduled tasks.
+ */
+class ScheduleRunCommand extends Command
+{
+    public static string $name = 'schedule:run';
+    public static string $description = 'Run all due scheduled tasks';
+
+    protected bool $messageTimeStamp = true;
+
+    private ?LockFactory $lockFactory = null;
+
+    /**
+     * Constructor.
+     *
+     * @param Scheduler $scheduler
+     */
+    public function __construct(protected Scheduler $scheduler)
+    {
+        parent::__construct();
+    }
+
+    /**
+     * Get the lock factory (lazy-initialized).
+     *
+     * @return LockFactory
+     */
+    private function getLockFactory(): LockFactory
+    {
+        if ($this->lockFactory === null) {
+            $this->lockFactory = new LockFactory(new FlockStore());
+        }
+        return $this->lockFactory;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function handle(): void
+    {
+        $dueSchedules = $this->scheduler->getDueSchedules();
+
+        if (empty($dueSchedules)) {
+            $this->info('No scheduled commands are ready to run.');
+            return;
+        }
+
+        foreach ($dueSchedules as $schedule) {
+            // Conditional scheduling
+            if ($schedule->shouldSkip()) {
+                $desc = $schedule->getDescription() ?? $schedule->getCommandName();
+                $this->comment("Skipped (condition): $desc");
+                continue;
+            }
+
+            if ($schedule->isRunInBackground()) {
+                $this->runInBackground($schedule);
+                continue;
+            }
+
+            $this->runScheduledTask($schedule);
+        }
+    }
+
+    /**
+     * Run a single scheduled task with locking, hooks, output capture, and pings.
+     *
+     * @param Schedule $schedule
+     * @return void
+     */
+    private function runScheduledTask(Schedule $schedule): void
+    {
+        $description = $schedule->getDescription() ?? $schedule->getCommandName();
+        $lock = null;
+
+        // Acquire lock if overlap prevention is enabled
+        if ($schedule->isWithoutOverlapping()) {
+            $lockKey = 'schedule_' . md5($schedule->getCommandName() . serialize($schedule->getArguments()));
+            $lock = $this->getLockFactory()->createLock($lockKey, 3600);
+
+            if (!$lock->acquire()) {
+                $this->comment("Skipped (overlapping): $description");
+                return;
+            }
+        }
+
+        try {
+            // Ping before
+            $this->ping($schedule->getPingBeforeUrl());
+
+            // Before hook
+            $before = $schedule->getBeforeCallback();
+            if ($before) {
+                $before();
+            }
+
+            $this->info("Running: $description");
+
+            // Execute with output capture
+            $exitCode = $this->executeCommand($schedule);
+
+            // After hook
+            $after = $schedule->getAfterCallback();
+            if ($after) {
+                $after($exitCode);
+            }
+
+            // Ping after success
+            $this->ping($schedule->getPingAfterUrl());
+
+        } catch (Throwable $ex) {
+            $this->error("Failed [$description]: {$ex->getMessage()}");
+
+            // Failure hook
+            $onFailure = $schedule->getOnFailureCallback();
+            if ($onFailure) {
+                $onFailure($ex);
+            }
+
+            // Ping on failure
+            $this->ping($schedule->getPingOnFailureUrl());
+        } finally {
+            $lock?->release();
+        }
+    }
+
+    /**
+     * Execute the command, capturing output to file if configured.
+     *
+     * @param Schedule $schedule
+     * @return int Exit code
+     */
+    private function executeCommand(Schedule $schedule): int
+    {
+        if ($schedule->getOutputPath()) {
+            // Capture output to buffer, then write to file
+            $bufferedOutput = new BufferedOutput();
+            $input = new ArrayInput(
+                array_merge(['command' => $schedule->getCommandName()], $schedule->getArguments())
+            );
+
+            $exitCode = $this->getApplication()->doRun($input, $bufferedOutput);
+
+            $content = $bufferedOutput->fetch();
+
+            // Also display in console
+            if ($content) {
+                $this->output->write($content);
+            }
+
+            // Write to file
+            $flags = $schedule->isAppendOutput() ? FILE_APPEND : 0;
+            $header = '[' . date('Y-m-d H:i:s') . '] ' . $schedule->getCommandName() . "\n";
+            file_put_contents($schedule->getOutputPath(), $header . $content . "\n", $flags);
+
+            return $exitCode;
+        }
+
+        return $this->call($schedule->getCommandName(), $schedule->getArguments());
+    }
+
+    /**
+     * Run a task in a background process.
+     *
+     * @param Schedule $schedule
+     * @return void
+     */
+    private function runInBackground(Schedule $schedule): void
+    {
+        $description = $schedule->getDescription() ?? $schedule->getCommandName();
+        $this->info("Starting background: $description");
+
+        $command = $this->buildBackgroundCommand($schedule);
+
+        if (str_contains(PHP_OS, 'WIN')) {
+            pclose(popen("start /B $command", 'r'));
+            return;
+        }
+
+        exec("$command > /dev/null 2>&1 &");
+    }
+
+    /**
+     * Build the shell command for background execution.
+     *
+     * @param Schedule $schedule
+     * @return string
+     */
+    private function buildBackgroundCommand(Schedule $schedule): string
+    {
+        $php = PHP_BINARY;
+        $script = $_SERVER['argv'][0] ?? 'console';
+        $args = $schedule->getCommandName();
+
+        foreach ($schedule->getArguments() as $key => $value) {
+            if (str_starts_with($key, '--')) {
+                $args .= " $key=" . escapeshellarg((string)$value);
+                continue;
+            }
+            $args .= ' ' . escapeshellarg((string)$value);
+        }
+
+        $output = '';
+        if ($schedule->getOutputPath()) {
+            $redirect = $schedule->isAppendOutput() ? ">>" : ">";
+            $output = "$redirect " . escapeshellarg($schedule->getOutputPath());
+        }
+
+        return trim("$php $script $args $output");
+    }
+
+    /**
+     * Send a GET request to a URL (fire-and-forget).
+     *
+     * @param string|null $url
+     * @return void
+     */
+    private function ping(?string $url): void
+    {
+        if ($url === null) {
+            return;
+        }
+
+        try {
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'timeout' => 5,
+                ],
+            ]);
+            @file_get_contents($url, false, $context);
+        } catch (Throwable) {
+            // Fire-and-forget — don't let ping failures break the scheduler
+        }
+    }
+}

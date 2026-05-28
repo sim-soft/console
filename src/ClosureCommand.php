@@ -9,12 +9,11 @@ use Closure;
  */
 class ClosureCommand extends Command
 {
-
     /** @var Closure|null Console input closure */
-    public static ?Closure $inputCallback = null;
+    protected ?Closure $inputClosure = null;
 
-    /** @var Closure|null A closure. */
-    static ?Closure $callback = null;
+    /** @var Closure|null The command handler closure. */
+    protected ?Closure $handlerCallback = null;
 
     /**
      * Constructor.
@@ -24,9 +23,21 @@ class ClosureCommand extends Command
      */
     public function __construct(?string $name = null, ?Closure $inputCallback = null)
     {
-        static::$inputCallback = $inputCallback;
+        $this->inputClosure = $inputCallback;
 
         parent::__construct($name);
+    }
+
+    /**
+     * Set the handler callback.
+     *
+     * @param Closure|null $callback
+     * @return $this
+     */
+    public function setHandler(?Closure $callback): static
+    {
+        $this->handlerCallback = $callback;
+        return $this;
     }
 
     /**
@@ -34,7 +45,8 @@ class ClosureCommand extends Command
      */
     protected function init(): void
     {
-        if ($callback = static::$inputCallback?->bindTo($this)){
+        $callback = $this->inputClosure?->bindTo($this);
+        if ($callback) {
             $callback();
         }
     }
@@ -44,9 +56,9 @@ class ClosureCommand extends Command
      */
     protected function handle(): void
     {
-        if ($callback = static::$callback?->bindTo($this)){
+        $callback = $this->handlerCallback?->bindTo($this);
+        if ($callback) {
             $callback();
         }
     }
-
 }
