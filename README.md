@@ -4,6 +4,7 @@ A lightweight, Laravel-inspired wrapper for Symfony Console — built PHP CLI
 commands with less boilerplate.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-online-green.svg)](https://sim-soft.github.io/console/)
 
 ## Requirements
 
@@ -65,18 +66,20 @@ php console screen:welcome
 
 ## Documentation
 
-| Topic                                       | Description                                                                |
-|---------------------------------------------|----------------------------------------------------------------------------|
-| [Creating Commands](doc/commands.md)        | Class-based and closure commands                                           |
-| [Console Input](doc/input.md)               | Arguments, options, and retrieval methods                                  |
-| [Writing Output](doc/output.md)             | Formatted messages, timestamps, newlines                                   |
-| [Helpers](doc/helpers.md)                   | Question, table, progress bar, progress indicator, tree                    |
-| [Calling Commands](doc/calling-commands.md) | Call from other commands or application code                               |
-| [Command Locking](doc/locking.md)           | Prevent parallel execution                                                 |
-| [Dependency Injection](doc/container.md)    | PSR-11 container, resolve(), constructor injection                         |
-| [Task Scheduling](doc/scheduling.md)        | Cron scheduling, hooks, overlap, output capture, pings                     |
-| [Logging](doc/logging.md)                   | PSR-3 logging via DI container                                             |
-| [Traits](doc/traits.md)                     | DateRangeOption, DateOption, FileOption, DryRun, Retry, OutputFormat, etc. |
+📖 **[Full Documentation](https://sim-soft.github.io/console/)**
+
+| Topic                                        | Description                                                                |
+|----------------------------------------------|----------------------------------------------------------------------------|
+| [Creating Commands](docs/commands.md)        | Class-based and closure commands                                           |
+| [Console Input](docs/input.md)               | Arguments, options, and retrieval methods                                  |
+| [Writing Output](docs/output.md)             | Formatted messages, timestamps, newlines                                   |
+| [Helpers](docs/helpers.md)                   | Question, table, progress bar, progress indicator, tree                    |
+| [Calling Commands](docs/calling-commands.md) | Call from other commands or application code                               |
+| [Command Locking](docs/locking.md)           | Prevent parallel execution                                                 |
+| [Dependency Injection](docs/container.md)    | PSR-11 container, resolve(), constructor injection                         |
+| [Task Scheduling](docs/scheduling.md)        | Cron scheduling, hooks, overlap, output capture, pings                     |
+| [Logging](docs/logging.md)                   | PSR-3 logging via DI container                                             |
+| [Traits](docs/traits.md)                     | DateRangeOption, DateOption, FileOption, DryRun, Retry, OutputFormat, etc. |
 
 ## API Quick Reference
 

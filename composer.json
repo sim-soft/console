@@ -20,7 +20,7 @@
   ],
   "type": "library",
   "license": "MIT",
-  "homepage": "https://github.com/nicksimsoft/console",
+  "homepage": "https://github.com/sim-soft/console",
   "authors": [
     {
       "name": "Sim",
@@ -29,8 +29,8 @@
     }
   ],
   "support": {
-    "issues": "https://github.com/nicksimsoft/console/issues",
-    "source": "https://github.com/nicksimsoft/console"
+    "issues": "https://github.com/sim-soft/console/issues",
+    "source": "https://github.com/sim-soft/console"
   },
   "require": {
     "php": "^8.2",
