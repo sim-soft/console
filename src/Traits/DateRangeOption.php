@@ -110,7 +110,9 @@ trait DateRangeOption
             !$monthDT && throw new Exception($monthError);
             $from = $monthDT->format('Y-m-01');
             $to = $monthDT->format('Y-m-t');
-        } else {
+        }
+
+        if (!$month) {
             $from = $this->option($fromDateName, $defaultFromDate);
             $to = $this->option($toDateName, $defaultToDate);
         }

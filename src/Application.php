@@ -3,6 +3,9 @@
 namespace Simsoft\Console;
 
 use Closure;
+use Psr\Container\ContainerInterface;
+use Simsoft\Console\Commands\ScheduleListCommand;
+use Simsoft\Console\Commands\ScheduleRunCommand;
 use Symfony\Component\Console\Application as ConsoleApplication;
 use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -29,6 +32,12 @@ class Application extends ConsoleApplication
 
     /** @var Application|null For closure command. */
     protected static ?Application $app = null;
+
+    /** @var ContainerInterface|null PSR-11 DI container. */
+    protected ?ContainerInterface $container = null;
+
+    /** @var Scheduler|null Task scheduler. */
+    protected ?Scheduler $scheduler = null;
 
     /**
      * Factory make.
@@ -57,19 +66,70 @@ class Application extends ConsoleApplication
                 static::$app->setCommandLoader(static::getClosureCommandLoader());
             }
 
-            if (static::$commands) {
-                if (static::$lazyLoad) {
-                    foreach(static::$commands as $commandClass) {
-                        static::$app->add(forward_static_call([$commandClass, 'getLazyCommand']));
-                    }
-                } else {
-                    foreach(static::$commands as $commandClass) {
-                        static::$app->add(new $commandClass());
-                    }
+            if (static::$commands && static::$lazyLoad) {
+                foreach (static::$commands as $commandClass) {
+                    static::$app->addCommand(forward_static_call([$commandClass, 'getLazyCommand']));
+                }
+            }
+
+            if (static::$commands && !static::$lazyLoad) {
+                foreach (static::$commands as $commandClass) {
+                    static::$app->addCommand(new $commandClass());
                 }
             }
         }
         return static::$app;
+    }
+
+    /**
+     * Set a PSR-11 compatible DI container.
+     *
+     * Commands will be resolved from the container when available.
+     *
+     * @param ContainerInterface $container
+     * @return $this
+     */
+    public function withContainer(ContainerInterface $container): static
+    {
+        $this->container = $container;
+        return $this;
+    }
+
+    /**
+     * Get the DI container.
+     *
+     * @return ContainerInterface|null
+     */
+    public function getContainer(): ?ContainerInterface
+    {
+        return $this->container;
+    }
+
+    /**
+     * Set up the scheduler with a configuration callback.
+     *
+     * @param Closure $callback Receives a Scheduler instance.
+     * @return $this
+     */
+    public function withScheduler(Closure $callback): static
+    {
+        $this->scheduler = new Scheduler();
+        $callback($this->scheduler);
+
+        $this->addCommand(new ScheduleRunCommand($this->scheduler));
+        $this->addCommand(new ScheduleListCommand($this->scheduler));
+
+        return $this;
+    }
+
+    /**
+     * Get the scheduler instance.
+     *
+     * @return Scheduler|null
+     */
+    public function getScheduler(): ?Scheduler
+    {
+        return $this->scheduler;
     }
 
     /**
@@ -113,8 +173,8 @@ class Application extends ConsoleApplication
                 new ConsoleOutput($silently ? OutputInterface::VERBOSITY_QUIET : OutputInterface::VERBOSITY_NORMAL),
             );
 
-        } catch (Throwable $throwable) {
-            error_log($throwable->getMessage(), E_USER_ERROR);
+        } catch (Throwable) {
+            // Command not found or execution error — return failure code
         }
         return 1;
     }
@@ -128,17 +188,21 @@ class Application extends ConsoleApplication
      */
     public function withCommands(array $commandClasses = [], bool $lazyLoad = true): static
     {
-        if ($lazyLoad) {
-            foreach($commandClasses as $commandClass) {
-                $this->add(forward_static_call([$commandClass, 'getLazyCommand']));
+        foreach ($commandClasses as $commandClass) {
+            if ($this->container?->has($commandClass)) {
+                $this->addCommand($this->container->get($commandClass));
+                continue;
             }
-        } else {
-            foreach($commandClasses as $commandClass) {
-                $this->add(new $commandClass());
+
+            if ($lazyLoad) {
+                $this->addCommand(forward_static_call([$commandClass, 'getLazyCommand']));
+                continue;
             }
+
+            $this->addCommand(new $commandClass());
         }
 
-       return $this;
+        return $this;
     }
 
     /**
@@ -149,9 +213,16 @@ class Application extends ConsoleApplication
      */
     public function withDefaultCommand(string $commandClass): static
     {
+        if ($this->container?->has($commandClass)) {
+            /** @var Command $command */
+            $command = $this->container->get($commandClass);
+            $this->addCommand($command);
+            return $this->setDefaultCommand($command->getName());
+        }
+
         /** @var Command $command */
         $command = new $commandClass();
-        $this->add($command);
+        $this->addCommand($command);
         return $this->setDefaultCommand($command->getName());
     }
 
@@ -162,8 +233,10 @@ class Application extends ConsoleApplication
      */
     public static function getClosureCommandLoader(): FactoryCommandLoader
     {
-        array_walk(static::$closureCommands, function($builder, $name){
-            static::$closureCommands[$name] = function() use ($builder): Command { return $builder->build(); };
+        array_walk(static::$closureCommands, function ($builder, $name) {
+            static::$closureCommands[$name] = function () use ($builder): Command {
+                return $builder->build();
+            };
         });
         return new FactoryCommandLoader(static::$closureCommands);
     }
@@ -184,8 +257,8 @@ class Application extends ConsoleApplication
             }
 
             return parent::run($input, $output);
-        } catch (Throwable $throwable) {
-            error_log($throwable->getMessage(), E_USER_ERROR);
+        } catch (Throwable) {
+            // Unrecoverable error — return failure code
         }
         return 0;
     }

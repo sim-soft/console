@@ -3,11 +3,19 @@
 namespace Simsoft\Console;
 
 use Countable;
-use Exception;
+use InvalidArgumentException;
+use RuntimeException;
 use Symfony\Component\Console\Command\Command as ConsoleCommand;
 use Symfony\Component\Console\Command\LazyCommand;
 use Symfony\Component\Console\Command\LockableTrait;
-use Symfony\Component\Console\Helper\{FormatterHelper, HelperInterface, ProgressBar, QuestionHelper, Table};
+use Symfony\Component\Console\Helper\{FormatterHelper,
+    HelperInterface,
+    ProgressBar,
+    ProgressIndicator,
+    QuestionHelper,
+    Table,
+    TreeHelper,
+    TreeStyle};
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -41,15 +49,15 @@ abstract class Command extends ConsoleCommand
     protected bool $lockable = false;
 
     /** @var string Command name. */
-    static string $name = '';
+    public static string $name = '';
 
     /** @var string Command description. */
-    static string $description = '';
+    public static string $description = '';
 
     /** @var bool Display datetime in message. */
     protected bool $messageTimeStamp = true;
 
-    const MESSAGE_DATETIME_FORMAT = 'Y-m-d H:i:s';
+    public const MESSAGE_DATETIME_FORMAT = 'Y-m-d H:i:s';
 
     /**
      * Actual execution.
@@ -98,17 +106,17 @@ abstract class Command extends ConsoleCommand
         try {
 
             if ($this->lockable) {
-                if (!$this->lock(null, true)) {
+                if ($this->lock(null, true)) {
                     $this->handle();
                 }
                 $this->release();
-            } else {
-                $this->handle();
+                return ConsoleCommand::SUCCESS;
             }
+
+            $this->handle();
 
         } catch (Throwable $throwable) {
             $this->error($throwable->getMessage());
-            error_log($throwable->getMessage());
             return ConsoleCommand::FAILURE;
         }
 
@@ -157,13 +165,43 @@ abstract class Command extends ConsoleCommand
     }
 
     /**
+     * Create a progress indicator for indeterminate tasks.
+     *
+     * @param string|null $format Display format (null for auto-detect).
+     * @param int $indicatorChangeInterval Change interval in milliseconds.
+     * @param array|null $indicatorValues Animated indicator characters.
+     * @return ProgressIndicator
+     */
+    public function createProgressIndicator(
+        ?string $format = null,
+        int     $indicatorChangeInterval = 100,
+        ?array  $indicatorValues = null,
+    ): ProgressIndicator
+    {
+        return new ProgressIndicator($this->output, $format, $indicatorChangeInterval, $indicatorValues);
+    }
+
+    /**
+     * Render a tree structure to the output.
+     *
+     * @param string $root Root node label.
+     * @param iterable $values Tree data (nested arrays or TreeNode instances).
+     * @param TreeStyle|null $style Tree style (null for default).
+     * @return void
+     */
+    public function tree(string $root, iterable $values, ?TreeStyle $style = null): void
+    {
+        TreeHelper::createTree($this->output, $root, $values, $style)->render();
+    }
+
+    /**
      * Display data in table.
      *
      * @param array $headers Table headers.
      * @param iterable $data 2 dimensional array data to be displayed.
      * @param callable|null $closure A closure to return array of data.
      * @return void
-     * @throws Exception
+     * @throws InvalidArgumentException
      */
     public function table(array $headers, iterable $data, ?callable $closure = null): void
     {
@@ -174,18 +212,27 @@ abstract class Command extends ConsoleCommand
             foreach ($data as $row) {
                 $table->addRow($closure($row));
             }
-        } else {
-            foreach ($data as $row) {
-                if (!is_array($row)) {
-                    throw new Exception("Each row should be an array.");
-                }
-                $table->addRow($row);
+            $table->render();
+            return;
+        }
+
+        foreach ($data as $row) {
+            if (!is_array($row)) {
+                throw new InvalidArgumentException("Each row should be an array.");
             }
+            $table->addRow($row);
         }
 
         $table->render();
     }
 
+    /**
+     * Display a formatted line with type styling.
+     *
+     * @param string $type The format type (info, comment, question, error).
+     * @param string $message The message to display.
+     * @return void
+     */
     public function formattedLine(string $type, string $message): void
     {
         $this->output->writeln(
@@ -323,6 +370,42 @@ abstract class Command extends ConsoleCommand
     public function option(string $name, mixed $default = null): mixed
     {
         return $this->input->getOption($name) ?? $default;
+    }
+
+    /**
+     * Resolve a service from the DI container.
+     *
+     * @template T
+     * @param class-string<T> $id Service identifier or class name.
+     * @return T|mixed
+     * @throws RuntimeException If no container is available.
+     */
+    public function resolve(string $id): mixed
+    {
+        $app = $this->getApplication();
+
+        if ($app instanceof Application && $app->getContainer()?->has($id)) {
+            return $app->getContainer()->get($id);
+        }
+
+        throw new RuntimeException("Unable to resolve '$id' — no container configured or service not found.");
+    }
+
+    /**
+     * Check if a service exists in the DI container.
+     *
+     * @param string $id Service identifier or class name.
+     * @return bool
+     */
+    public function hasService(string $id): bool
+    {
+        $app = $this->getApplication();
+
+        if ($app instanceof Application) {
+            return $app->getContainer()?->has($id) ?? false;
+        }
+
+        return false;
     }
 
     /**

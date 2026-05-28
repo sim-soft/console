@@ -1,0 +1,57 @@
+# Quick Start
+
+## Installation
+
+```shell
+composer require simsoft/console
+```
+
+## Entry Script
+
+Create a `console` file in your project root:
+
+```php
+<?php
+declare(strict_types=1);
+require "vendor/autoload.php";
+
+use App\Commands\HelloWorldCommand;
+use Simsoft\Console\Application;
+
+$status = Application::make('My App', '1.0')
+    ->withCommands([
+        HelloWorldCommand::class,
+    ])
+    ->run();
+
+exit($status);
+```
+
+## Hello World
+
+```php
+<?php
+declare(strict_types=1);
+
+namespace App\Commands;
+
+use Simsoft\Console\Command;
+
+class HelloWorldCommand extends Command
+{
+    public static string $name = 'screen:welcome';
+    public static string $description = 'Display a welcome message';
+
+    protected function handle(): void
+    {
+        $this->info('Hello World');
+    }
+}
+```
+
+## Run
+
+```shell
+php console screen:welcome
+# Output: Hello World
+```
