@@ -106,7 +106,7 @@ trait DateRangeOption
 
         $month = $this->option($monthName, $defaultMonth);
         if ($month) {
-            $monthDT = date_create_from_format('Y-m-d', "$month-01");
+            $monthDT = $this->parseStrictDate("$month-01", 'Y-m-d');
             !$monthDT && throw new Exception($monthError);
             $from = $monthDT->format('Y-m-01');
             $to = $monthDT->format('Y-m-t');
@@ -118,17 +118,41 @@ trait DateRangeOption
         }
 
         if ($from) {
-            $fromDate = date_create_immutable_from_format('Y-m-d', $from);
+            $fromDate = $this->parseStrictDate($from, 'Y-m-d');
             !$fromDate && throw new Exception($fromDateError);
         }
 
         if ($to) {
-            $toDate = date_create_immutable_from_format('Y-m-d', $to);
+            $toDate = $this->parseStrictDate($to, 'Y-m-d');
             !$toDate && throw new Exception($toDateError);
         }
 
-        $toDate != null && $fromDate > $toDate && throw new Exception($toDateIsLargerError);
+        $fromDate != null && $toDate != null && $fromDate > $toDate
+            && throw new Exception($toDateIsLargerError);
 
         return [$fromDate, $toDate];
+    }
+
+    /**
+     * Parse a date, rejecting values PHP would otherwise roll over.
+     *
+     * date_create_immutable_from_format() happily turns '2026-13-45' into
+     * '2027-02-14'. Re-formatting the result and comparing it to the input
+     * rejects any value that was not already a valid date.
+     *
+     * @param string $value The raw input value.
+     * @param string $format Expected date format.
+     * @return DateTimeImmutable|null Null when the value is not a valid date.
+     */
+    protected function parseStrictDate(string $value, string $format = 'Y-m-d'): ?DateTimeImmutable
+    {
+        $value = trim($value);
+        $date = DateTimeImmutable::createFromFormat($format, $value);
+
+        if ($date === false || $date->format($format) !== $value) {
+            return null;
+        }
+
+        return $date;
     }
 }

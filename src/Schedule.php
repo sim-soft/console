@@ -4,8 +4,10 @@ namespace Simsoft\Console;
 
 use Closure;
 use Cron\CronExpression;
+use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use InvalidArgumentException;
 
 /**
  * Class Schedule
@@ -105,6 +107,7 @@ class Schedule
 
     public function hourlyAt(int $minute): static
     {
+        $this->assertInRange($minute, 0, 59, 'minute');
         return $this->cron("$minute * * * *");
     }
 
@@ -115,11 +118,15 @@ class Schedule
 
     public function dailyAt(int $hour, int $minute = 0): static
     {
+        $this->assertInRange($hour, 0, 23, 'hour');
+        $this->assertInRange($minute, 0, 59, 'minute');
         return $this->cron("$minute $hour * * *");
     }
 
     public function twiceDaily(int $firstHour = 1, int $secondHour = 13): static
     {
+        $this->assertInRange($firstHour, 0, 23, 'hour');
+        $this->assertInRange($secondHour, 0, 23, 'hour');
         return $this->cron("0 $firstHour,$secondHour * * *");
     }
 
@@ -130,6 +137,9 @@ class Schedule
 
     public function weeklyOn(int $dayOfWeek, int $hour = 0, int $minute = 0): static
     {
+        $this->assertInRange($dayOfWeek, 0, 7, 'day of week');
+        $this->assertInRange($hour, 0, 23, 'hour');
+        $this->assertInRange($minute, 0, 59, 'minute');
         return $this->cron("$minute $hour * * $dayOfWeek");
     }
 
@@ -140,6 +150,9 @@ class Schedule
 
     public function monthlyOn(int $dayOfMonth, int $hour = 0, int $minute = 0): static
     {
+        $this->assertInRange($dayOfMonth, 1, 31, 'day of month');
+        $this->assertInRange($hour, 0, 23, 'hour');
+        $this->assertInRange($minute, 0, 59, 'minute');
         return $this->cron("$minute $hour $dayOfMonth * *");
     }
 
@@ -161,6 +174,26 @@ class Schedule
     public function weekends(): static
     {
         return $this->cron('0 0 * * 0,6');
+    }
+
+    /**
+     * Guard a cron field value, so out-of-range input fails at the call site
+     * rather than later inside CronExpression when the task is evaluated.
+     *
+     * @param int $value The supplied value.
+     * @param int $min Lowest accepted value.
+     * @param int $max Highest accepted value.
+     * @param string $label Field name used in the error message.
+     * @return void
+     * @throws InvalidArgumentException When the value is out of range.
+     */
+    protected function assertInRange(int $value, int $min, int $max, string $label): void
+    {
+        if ($value < $min || $value > $max) {
+            throw new InvalidArgumentException(
+                "Invalid $label: $value. Expected a value between $min and $max."
+            );
+        }
     }
 
     // ─── Options ─────────────────────────────────────────────────────────
@@ -253,24 +286,23 @@ class Schedule
     /**
      * Only run between the given times (24h format HH:MM).
      *
+     * Evaluated in the schedule's timezone when one is set via timezone(),
+     * otherwise in the server's local time.
+     *
      * @param string $startTime e.g. '09:00'
      * @param string $endTime e.g. '17:00'
      * @return $this
      */
     public function between(string $startTime, string $endTime): static
     {
-        return $this->when(function () use ($startTime, $endTime) {
-            $now = date('H:i');
-            if ($startTime <= $endTime) {
-                return $now >= $startTime && $now <= $endTime;
-            }
-            // Overnight range (e.g. '22:00' to '06:00')
-            return $now >= $startTime || $now <= $endTime;
-        });
+        return $this->when(fn() => $this->isNowBetween($startTime, $endTime));
     }
 
     /**
      * Skip if the current time is between the given times (24h format HH:MM).
+     *
+     * Evaluated in the schedule's timezone when one is set via timezone(),
+     * otherwise in the server's local time.
      *
      * @param string $startTime e.g. '23:00'
      * @param string $endTime e.g. '04:00'
@@ -278,13 +310,29 @@ class Schedule
      */
     public function unlessBetween(string $startTime, string $endTime): static
     {
-        return $this->skip(function () use ($startTime, $endTime) {
-            $now = date('H:i');
-            if ($startTime <= $endTime) {
-                return $now >= $startTime && $now <= $endTime;
-            }
-            return $now >= $startTime || $now <= $endTime;
-        });
+        return $this->skip(fn() => $this->isNowBetween($startTime, $endTime));
+    }
+
+    /**
+     * Check whether the current time falls inside the given window.
+     *
+     * The timezone is read when this runs rather than when the window is
+     * registered, so timezone() may be called before or after between().
+     *
+     * @param string $startTime Window start, format HH:MM.
+     * @param string $endTime Window end, format HH:MM.
+     * @return bool
+     */
+    protected function isNowBetween(string $startTime, string $endTime): bool
+    {
+        $now = (new DateTimeImmutable('now', $this->timezone))->format('H:i');
+
+        if ($startTime <= $endTime) {
+            return $now >= $startTime && $now <= $endTime;
+        }
+
+        // Overnight range (e.g. '22:00' to '06:00')
+        return $now >= $startTime || $now <= $endTime;
     }
 
     /**

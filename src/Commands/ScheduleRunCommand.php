@@ -187,7 +187,7 @@ class ScheduleRunCommand extends Command
 
         $command = $this->buildBackgroundCommand($schedule);
 
-        if (str_contains(PHP_OS, 'WIN')) {
+        if (PHP_OS_FAMILY === 'Windows') {
             pclose(popen("start /B $command", 'r'));
             return;
         }
@@ -203,13 +203,14 @@ class ScheduleRunCommand extends Command
      */
     private function buildBackgroundCommand(Schedule $schedule): string
     {
-        $php = PHP_BINARY;
-        $script = $_SERVER['argv'][0] ?? 'console';
-        $args = $schedule->getCommandName();
+        // Paths may contain spaces (e.g. C:\Program Files\php\php.exe).
+        $php = escapeshellarg(PHP_BINARY);
+        $script = escapeshellarg($_SERVER['argv'][0] ?? 'console');
+        $args = escapeshellarg($schedule->getCommandName());
 
         foreach ($schedule->getArguments() as $key => $value) {
             if (str_starts_with($key, '--')) {
-                $args .= " $key=" . escapeshellarg((string)$value);
+                $args .= ' ' . escapeshellarg("$key=$value");
                 continue;
             }
             $args .= ' ' . escapeshellarg((string)$value);

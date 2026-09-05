@@ -245,6 +245,10 @@ $this->retry(
 );
 ```
 
+`maxAttempts` must be at least 1; lower values throw `InvalidArgumentException`.
+A callback is always run at least once, and the last exception is rethrown when
+every attempt fails.
+
 ## ConfirmableAction
 
 Environment-aware confirmation guard. Unlike `$this->confirm()`:

@@ -80,6 +80,11 @@ exit($status);
 | `->weekends()`            | `0 0 * * 0,6`     |
 | `->cron('5 4 * * 1')`     | Custom expression |
 
+Arguments are range-checked: minutes `0-59`, hours `0-23`, day of week `0-7`
+(both `0` and `7` mean Sunday), and day of month `1-31`. Anything outside those
+bounds throws `InvalidArgumentException` when the schedule is registered, rather
+than producing a cron expression that never fires.
+
 ## Options & Hooks
 
 | Method                             | Description                                   |
@@ -114,6 +119,11 @@ $scheduler->command('data:sync')
     ->between('09:00', '17:00')
     ->unlessBetween('02:00', '04:00');
 ```
+
+`between()` and `unlessBetween()` evaluate their window in the schedule's
+timezone, so `timezone()` may be called before or after them. A window whose end
+is earlier than its start is treated as crossing midnight — `between('22:00',
+'06:00')` matches the evening and the small hours, not the daytime in between.
 
 ## Output Capture
 

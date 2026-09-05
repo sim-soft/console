@@ -300,14 +300,14 @@ abstract class Command extends ConsoleCommand
     /**
      * Display blank lines.
      *
-     * @param int $repeat Total
+     * Blank lines are never timestamped, regardless of $messageTimeStamp.
+     *
+     * @param int $repeat Number of additional blank lines. Default: 0 (one line).
      * @return void
      */
     public function newLine(int $repeat = 0): void
     {
-        do {
-            $this->line('');
-        } while (--$repeat > 0);
+        $this->output->write(str_repeat(PHP_EOL, max(1, $repeat)));
     }
 
     /**
@@ -320,7 +320,9 @@ abstract class Command extends ConsoleCommand
      */
     public function errorBlock(string $section, string $message, bool $labelOff = false): void
     {
-        $label = $this->messageTimeStamp && !$labelOff? $this->getCurrentDatetime() . '] ': '';
+        $label = $this->messageTimeStamp && !$labelOff
+            ? '[' . $this->getCurrentDatetime() . '] '
+            : '';
 
         $this->output->writeln(
             $this->formatter->formatBlock([$label.$section, $label.$message], 'error')
@@ -532,11 +534,17 @@ abstract class Command extends ConsoleCommand
      */
     public function callSilently(string $commandName, array $input = []): int
     {
+        $verbosity = $this->output->getVerbosity();
         $this->output->setVerbosity(OutputInterface::VERBOSITY_QUIET);
-        return $this->getApplication()->doRun(
-            new ArrayInput(array_merge(['command' => $commandName], $input)),
-            $this->output
-        );
+
+        try {
+            return $this->getApplication()->doRun(
+                new ArrayInput(array_merge(['command' => $commandName], $input)),
+                $this->output
+            );
+        } finally {
+            $this->output->setVerbosity($verbosity);
+        }
     }
 
 }

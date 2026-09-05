@@ -149,4 +149,65 @@ class DateRangeOptionTest extends TestCase
         $this->assertStringContainsString('FROM:2024-03-15', $output);
         $this->assertStringContainsString('TO:2024-03-15', $output);
     }
+
+    // --- Out-of-range dates must be rejected, not rolled over ---
+
+    public function testOutOfRangeFromDateIsRejectedInsteadOfRollingOver(): void
+    {
+        // date_create_immutable_from_format() would silently yield 2027-02-14.
+        $output = $this->runDateRange(['--from-date' => '2026-13-45']);
+
+        $this->assertStringContainsString('Invalid from date value', $output);
+        $this->assertStringNotContainsString('FROM:2027', $output);
+    }
+
+    public function testOutOfRangeToDateIsRejectedInsteadOfRollingOver(): void
+    {
+        $output = $this->runDateRange([
+            '--from-date' => '2024-01-01',
+            '--to-date' => '2024-02-31',
+        ]);
+
+        $this->assertStringContainsString('Invalid to date value', $output);
+        $this->assertStringNotContainsString('TO:2024-03', $output);
+    }
+
+    public function testImpossibleLeapDayIsRejected(): void
+    {
+        // 2023 is not a leap year; PHP would roll this to 2023-03-01.
+        $output = $this->runDateRange(['--from-date' => '2023-02-29']);
+
+        $this->assertStringContainsString('Invalid from date value', $output);
+        $this->assertStringNotContainsString('FROM:2023-03-01', $output);
+    }
+
+    public function testRealLeapDayIsAccepted(): void
+    {
+        $output = $this->runDateRange(['--from-date' => '2024-02-29']);
+
+        $this->assertStringContainsString('FROM:2024-02-29', $output);
+    }
+
+    public function testOutOfRangeMonthIsRejected(): void
+    {
+        $output = $this->runDateRange(['--month' => '2024-13']);
+
+        $this->assertStringContainsString('Invalid month value', $output);
+        $this->assertStringNotContainsString('FROM:2025', $output);
+    }
+
+    public function testShortFormDateIsRejected(): void
+    {
+        // '2024-1-5' is not the documented YYYY-MM-DD format.
+        $output = $this->runDateRange(['--from-date' => '2024-1-5']);
+
+        $this->assertStringContainsString('Invalid from date value', $output);
+    }
+
+    public function testDateWithTrailingContentIsRejected(): void
+    {
+        $output = $this->runDateRange(['--from-date' => '2024-01-01 garbage']);
+
+        $this->assertStringContainsString('Invalid from date value', $output);
+    }
 }
