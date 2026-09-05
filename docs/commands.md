@@ -2,6 +2,7 @@
 
 - [Class-Based Commands](#class-based-commands)
 - [Closure Commands](#closure-commands)
+- [Error Handling](#error-handling)
 
 ## Class-Based Commands
 
@@ -68,3 +69,22 @@ exit($status);
 php console greet:user Alice --age=30
 # Output: Hello, Alice! You are 30 years old.
 ```
+
+## Error Handling
+
+An exception escaping `handle()` is caught, reported, and turned into a
+`FAILURE` exit code. How much is reported depends on verbosity:
+
+| Verbosity  | Output                                                     |
+|------------|------------------------------------------------------------|
+| default    | The exception message only                                 |
+| `-v`       | Adds exception class, file, line, and any previous exceptions |
+| `-vv`      | Adds the full stack trace for each                          |
+
+```shell
+php console data:sync        # Connection refused
+php console data:sync -vv    # ...with class, origin, cause, and trace
+```
+
+Ordinary runs stay readable, and the detail needed to debug a failure is one
+flag away rather than lost.

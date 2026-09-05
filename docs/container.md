@@ -78,3 +78,18 @@ protected function handle(): void
 |---------------------------------|-----------------------------------|
 | `$this->resolve(string $id)`    | Get service (throws if not found) |
 | `$this->hasService(string $id)` | Check if service exists           |
+
+## Container and the Static call() API
+
+The container lives on the application instance. `Application::call()` builds
+its own bare application, so commands invoked through it cannot resolve
+services unless you share the configured instance:
+
+```php
+Application::make('My App', '1.0')
+    ->withContainer($container)
+    ->withCommands([SyncCommand::class])
+    ->shareGlobally();
+```
+
+See [Calling Commands](calling-commands.md#sharing-a-configured-application).

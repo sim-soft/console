@@ -42,8 +42,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paths containing spaces no longer break the generated command. The Windows
   branch now tests `PHP_OS_FAMILY` instead of matching `WIN` inside `PHP_OS`
 
+- The DI container is now reachable from the static `Application::call()` API.
+  `call()` built its own bare application, so a command using `resolve()` failed
+  there while working under `run()`. Call `shareGlobally()` on the configured
+  application to share it. `resolve()` also names this as the likely cause when
+  no container is configured
+- `Application::commands()` and `Application::command()` no longer register into
+  an application that `call()` has already cached. A registration made after the
+  first `call()` was silently ignored, and the command reported as undefined
+- `Application::getClosureCommandLoader()` can be called more than once. It
+  rewrote the static registry in place, so a second call built factories closing
+  over a null builder and fataled with `build() on null`
+- `Application::run()` and `Application::call()` render the throwable instead of
+  returning a bare failure code with no explanation. A silent `call()` stays
+  silent
+
+### Added
+
+- `Application::shareGlobally()` shares a configured instance — container,
+  scheduler, and all — with the static `call()` API
+- `Application::flushGlobal()` drops the shared and auto-built instances, for
+  tests and long-running workers where static state would otherwise leak
+
 ### Changed
 
+- **Behavior:** an exception escaping `handle()` still reports its message at
+  default verbosity, and now adds the exception class, origin, and previous
+  exceptions at `-v`, plus stack traces at `-vv`. Previously the class, origin,
+  and trace were discarded at every verbosity level
 - **Behavior:** frequency helpers (`hourlyAt()`, `dailyAt()`, `twiceDaily()`,
   `weeklyOn()`, `monthlyOn()`) validate their arguments and throw
   `InvalidArgumentException` for out-of-range values, instead of building a cron

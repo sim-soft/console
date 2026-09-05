@@ -111,7 +111,7 @@ abstract class Command extends ConsoleCommand
         try {
             $this->handle();
         } catch (Throwable $throwable) {
-            $this->error($throwable->getMessage());
+            $this->reportThrowable($throwable);
             return ConsoleCommand::FAILURE;
         } finally {
             if ($this->lockable) {
@@ -120,6 +120,40 @@ abstract class Command extends ConsoleCommand
         }
 
         return ConsoleCommand::SUCCESS;
+    }
+
+    /**
+     * Report an uncaught throwable from handle().
+     *
+     * The one-line message is kept as the default so normal runs stay readable.
+     * Anything more detailed — exception class, origin, trace, previous
+     * exceptions — is only useful when debugging, so it is gated behind -v.
+     *
+     * @param Throwable $throwable
+     * @return void
+     */
+    protected function reportThrowable(Throwable $throwable): void
+    {
+        $this->error($throwable->getMessage());
+
+        if ($this->output->getVerbosity() < OutputInterface::VERBOSITY_VERBOSE) {
+            return;
+        }
+
+        for ($ex = $throwable, $depth = 0; $ex !== null; $ex = $ex->getPrevious(), $depth++) {
+            $this->output->writeln(sprintf(
+                '<comment>%s%s</comment>: %s <comment>in</comment> %s:%d',
+                $depth > 0 ? 'Caused by ' : '',
+                $ex::class,
+                $ex->getMessage(),
+                $ex->getFile(),
+                $ex->getLine()
+            ));
+
+            if ($this->output->getVerbosity() >= OutputInterface::VERBOSITY_VERY_VERBOSE) {
+                $this->output->writeln($ex->getTraceAsString());
+            }
+        }
     }
 
     /**
@@ -387,6 +421,14 @@ abstract class Command extends ConsoleCommand
 
         if ($app instanceof Application && $app->getContainer()?->has($id)) {
             return $app->getContainer()->get($id);
+        }
+
+        if ($app instanceof Application && $app->getContainer() === null) {
+            throw new RuntimeException(
+                "Unable to resolve '$id' — no container is configured on this application. "
+                . 'If this command was invoked through Application::call(), call shareGlobally() '
+                . 'on the application you configured with withContainer().'
+            );
         }
 
         throw new RuntimeException("Unable to resolve '$id' — no container configured or service not found.");

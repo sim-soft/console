@@ -12,6 +12,7 @@ use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\ConsoleOutput;
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
 
@@ -31,8 +32,11 @@ class Application extends ConsoleApplication
     /** @var bool Enable lazy load commands. */
     protected static bool $lazyLoad = true;
 
-    /** @var Application|null For closure command. */
+    /** @var Application|null Auto-built instance backing static call(). */
     protected static ?Application $app = null;
+
+    /** @var Application|null Instance explicitly shared via shareGlobally(). */
+    protected static ?Application $sharedApp = null;
 
     /** @var ContainerInterface|null PSR-11 DI container. */
     protected ?ContainerInterface $container = null;
@@ -59,27 +63,51 @@ class Application extends ConsoleApplication
      */
     protected static function getApplication(): static
     {
+        if (static::$sharedApp instanceof static) {
+            return static::$sharedApp;
+        }
+
         if (static::$app === null) {
             static::$app = static::make();
             static::$app->setAutoExit(false);
 
-            if (!current(static::$closureCommands) instanceof Closure) {
+            if (static::$closureCommands) {
                 static::$app->setCommandLoader(static::getClosureCommandLoader());
             }
 
-            if (static::$commands && static::$lazyLoad) {
-                foreach (static::$commands as $commandClass) {
-                    static::$app->addCommand(forward_static_call([$commandClass, 'getLazyCommand']));
-                }
-            }
-
-            if (static::$commands && !static::$lazyLoad) {
-                foreach (static::$commands as $commandClass) {
-                    static::$app->addCommand(new $commandClass());
-                }
-            }
+            static::$app->withCommands(static::$commands, static::$lazyLoad);
         }
         return static::$app;
+    }
+
+    /**
+     * Share this instance with the static call() API.
+     *
+     * Without this, static::call() builds its own bare application, which has
+     * no container and no scheduler. Commands invoked through it would fail to
+     * resolve services that work fine under run(). Sharing the configured
+     * instance makes both entry points behave identically.
+     *
+     * @return $this
+     */
+    public function shareGlobally(): static
+    {
+        static::$sharedApp = $this;
+        return $this;
+    }
+
+    /**
+     * Drop the shared instance and the auto-built one.
+     *
+     * Mainly useful in tests and long-running workers, where leftover static
+     * state would otherwise leak between runs.
+     *
+     * @return void
+     */
+    public static function flushGlobal(): void
+    {
+        static::$sharedApp = null;
+        static::$app = null;
     }
 
     /**
@@ -142,6 +170,8 @@ class Application extends ConsoleApplication
      */
     public static function command(string $name, Closure $callback): CommandBuilder
     {
+        static::$app = null;
+
         return static::$closureCommands[$name] = new CommandBuilder($name, $callback);
     }
 
@@ -156,6 +186,11 @@ class Application extends ConsoleApplication
     {
         static::$commands = $commandClass;
         static::$lazyLoad = $lazyLoad;
+
+        // The auto-built application caches whatever was registered at the time
+        // of the first call(). Discard it so a later registration is not
+        // silently ignored.
+        static::$app = null;
     }
 
     /**
@@ -168,16 +203,27 @@ class Application extends ConsoleApplication
      */
     public static function call(string $commandName, array $input = [], bool $silently = true): int
     {
+        $output = new ConsoleOutput(
+            $silently ? OutputInterface::VERBOSITY_QUIET : OutputInterface::VERBOSITY_NORMAL
+        );
+
         try {
             return static::getApplication()->doRun(
                 new ArrayInput(array_merge(['command' => $commandName], $input)),
-                new ConsoleOutput($silently ? OutputInterface::VERBOSITY_QUIET : OutputInterface::VERBOSITY_NORMAL),
+                $output,
             );
 
-        } catch (Throwable) {
-            // Command not found or execution error — return failure code
+        } catch (Throwable $throwable) {
+            // An unknown command or a failure inside doRun() itself. Returning
+            // a bare 1 with no message left callers with nothing to debug.
+            // Symfony's renderer writes at quiet level, so it would punch
+            // through a silent call — honour $silently and stay quiet there.
+            if (!$silently) {
+                static::getApplication()->renderThrowable($throwable, static::errorOutput($output));
+            }
         }
-        return 1;
+
+        return ConsoleCommand::FAILURE;
     }
 
     /**
@@ -234,12 +280,18 @@ class Application extends ConsoleApplication
      */
     public static function getClosureCommandLoader(): FactoryCommandLoader
     {
-        array_walk(static::$closureCommands, function ($builder, $name) {
-            static::$closureCommands[$name] = function () use ($builder): Command {
-                return $builder->build();
-            };
-        });
-        return new FactoryCommandLoader(static::$closureCommands);
+        $factories = [];
+
+        foreach (static::$closureCommands as $name => $entry) {
+            // Accept both raw builders and already-wrapped factories, so the
+            // loader can be rebuilt any number of times. Rewriting the static
+            // array in place made a second call return an empty loader.
+            $factories[$name] = $entry instanceof Closure
+                ? $entry
+                : static fn(): Command => $entry->build();
+        }
+
+        return new FactoryCommandLoader($factories);
     }
 
     /**
@@ -253,14 +305,34 @@ class Application extends ConsoleApplication
     {
         try {
 
-            if (!current(static::$closureCommands) instanceof Closure) {
+            if (static::$closureCommands) {
                 $this->setCommandLoader(static::getClosureCommandLoader());
             }
 
             return parent::run($input, $output);
-        } catch (Throwable) {
-            // Unrecoverable error — return failure code
+        } catch (Throwable $throwable) {
+            // Symfony renders exceptions thrown inside a command itself, so
+            // reaching here means the failure escaped that handling. Render it
+            // rather than exiting silently with no explanation.
+            $this->renderThrowable($throwable, static::errorOutput($output));
         }
+
         return ConsoleCommand::FAILURE;
+    }
+
+    /**
+     * Get the stderr stream for an output, falling back to the output itself.
+     *
+     * Only ConsoleOutputInterface exposes getErrorOutput(); a BufferedOutput
+     * or NullOutput does not.
+     *
+     * @param OutputInterface|null $output
+     * @return OutputInterface
+     */
+    protected static function errorOutput(?OutputInterface $output): OutputInterface
+    {
+        $output ??= new ConsoleOutput();
+
+        return $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
     }
 }
