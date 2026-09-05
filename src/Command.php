@@ -168,16 +168,27 @@ abstract class Command extends ConsoleCommand
     /**
      * Run with progress bar
      *
+     * A Countable that is not also iterable cannot be walked. It used to render a
+     * full progress bar while never invoking the callback once, reporting a
+     * complete run over nothing; it is now rejected outright.
+     *
      * @param Countable|iterable<array-key, mixed> $data
      * @param callable $callback A callable to handle each data.
      * @param int $maxSteps
      * @return void
+     * @throws InvalidArgumentException If $data is Countable but not iterable.
      */
     public function withProgressBar(Countable|iterable $data, callable $callback, int $maxSteps = 0): void
     {
-        if (is_iterable($data)) {
-            $data = iterator_to_array($data);
+        if (!is_iterable($data)) {
+            throw new InvalidArgumentException(sprintf(
+                '%s is Countable but not iterable, so withProgressBar() cannot traverse it. '
+                . 'Pass an array, a Traversable, or something implementing both.',
+                $data::class
+            ));
         }
+
+        $data = iterator_to_array($data);
 
         $progress = new ProgressBar($this->output, count($data));
 

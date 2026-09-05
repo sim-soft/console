@@ -70,6 +70,10 @@ $this->newLine();
 $this->info('Done!');
 ```
 
+`$items` must be traversable — an array or a `Traversable`. A `Countable` that
+is not also iterable throws `InvalidArgumentException`, since there is nothing
+to walk.
+
 Custom progress bar:
 
 ```php

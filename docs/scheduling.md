@@ -176,3 +176,14 @@ php console schedule:list   # List all registered tasks
 **Fault isolation:** Each task runs independently. If one fails, the scheduler
 calls `onFailure`, pings the failure URL, releases the lock, and continues to
 the next task.
+
+A task counts as failed when it exits non-zero — which is what a command does
+when an exception escapes `handle()`. `after` runs only on success; `onFailure`
+receives the throwable.
+
+**Exit code:** `schedule:run` exits non-zero if any task failed, after running
+all of them, so cron and monitoring see the failure:
+
+```shell
+php console schedule:run || notify-on-call "scheduled tasks failed"
+```

@@ -130,6 +130,54 @@ class CommandOutputTest extends TestCase
         $this->assertStringContainsString('RESULTS:1,2,3', $output);
     }
 
+    public function testProgressBarTraversesAGenerator(): void
+    {
+        $output = $this->createAndRunCommand(function (Command $cmd) {
+            $gen = (function () {
+                yield 1;
+                yield 2;
+                yield 3;
+            })();
+
+            $results = [];
+            $cmd->withProgressBar($gen, function ($item) use (&$results) {
+                $results[] = $item;
+            });
+            $cmd->newLine();
+            $cmd->line('RESULTS:' . implode(',', $results));
+        });
+
+        $this->assertStringContainsString('RESULTS:1,2,3', $output);
+    }
+
+    public function testProgressBarRejectsCountableThatIsNotIterable(): void
+    {
+        // The signature accepts Countable, but a Countable that is not also
+        // iterable cannot be walked. This used to render a full progress bar
+        // while invoking the callback zero times — a complete run over nothing.
+        $output = $this->createAndRunCommand(function (Command $cmd) {
+            $bag = new class implements \Countable {
+                public function count(): int
+                {
+                    return 3;
+                }
+            };
+
+            $invoked = 0;
+            try {
+                $cmd->withProgressBar($bag, function () use (&$invoked) {
+                    $invoked++;
+                });
+                $cmd->line("NO ERROR, callback invoked $invoked times");
+            } catch (\InvalidArgumentException $e) {
+                $cmd->line('REJECTED: ' . $e->getMessage());
+            }
+        });
+
+        $this->assertStringContainsString('REJECTED:', $output);
+        $this->assertStringContainsString('is Countable but not iterable', $output);
+    }
+
     // --- createProgressBar ---
 
     public function testCreateProgressBar(): void

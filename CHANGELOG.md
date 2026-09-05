@@ -60,6 +60,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   arguments cannot be lazy-loaded, and names the alternatives. It previously
   fataled with an `ArgumentCountError` at resolution time, far from the
   registration that caused it
+- The scheduler detects failed tasks. `Command::execute()` catches whatever
+  escapes `handle()` and converts it to a `FAILURE` exit code, so nothing
+  propagated to `ScheduleRunCommand`'s handler: `onFailure` never ran, the
+  failure URL was never pinged, `after` fired as though the task had succeeded,
+  and `schedule:run` reported success to cron. Failure is now detected from the
+  exit code
+- `Command::withProgressBar()` rejects a `Countable` that is not also iterable.
+  Its signature accepts one, but the body could not traverse it: the progress
+  bar ran to 100% while the callback was never invoked, reporting a complete
+  run over nothing
 
 ### Added
 
@@ -69,6 +79,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tests and long-running workers where static state would otherwise leak
 - CI now runs PHPStan and PHPMD alongside the test suite, in a separate job, so
   the pipeline covers everything `composer check` runs locally
+- Test coverage for `ScheduleRunCommand` and `ScheduleListCommand`, which had
+  none — hook dispatch, failure reporting, fault isolation, output capture, and
+  listing
 
 ### Changed
 
@@ -91,6 +104,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Values below 1 throw `InvalidArgumentException`
 - **Behavior:** a lockable command that cannot acquire its lock exits with
   `SUCCESS` rather than waiting for the lock to be freed
+- **Behavior:** `schedule:run` exits non-zero when any task failed. It still
+  runs every due task first — failures stay isolated — but no longer reports
+  success to cron when something broke
 - `phpstan.neon` no longer suppresses 13 broad error patterns. The underlying
   issues are fixed instead: 19 malformed `@method` tags across the traits used
   `name(): Type` rather than PHPDoc's `Type name()` syntax and were parsed as

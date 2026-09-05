@@ -2,6 +2,7 @@
 
 namespace Simsoft\Console\Commands;
 
+use RuntimeException;
 use Simsoft\Console\Command;
 use Simsoft\Console\Schedule;
 use Simsoft\Console\Scheduler;
@@ -24,6 +25,9 @@ class ScheduleRunCommand extends Command
     protected bool $messageTimeStamp = true;
 
     private ?LockFactory $lockFactory = null;
+
+    /** @var int Tasks that failed during this run. */
+    private int $failures = 0;
 
     /**
      * Constructor.
@@ -60,6 +64,8 @@ class ScheduleRunCommand extends Command
             return;
         }
 
+        $this->failures = 0;
+
         foreach ($dueSchedules as $schedule) {
             // Conditional scheduling
             if ($schedule->shouldSkip()) {
@@ -74,6 +80,17 @@ class ScheduleRunCommand extends Command
             }
 
             $this->runScheduledTask($schedule);
+        }
+
+        // Every task still ran — failures are isolated per task. But the run as a
+        // whole must not report success to cron when something failed, or a broken
+        // task stays invisible until someone reads the logs.
+        if ($this->failures > 0) {
+            throw new RuntimeException(sprintf(
+                '%d of %d scheduled task(s) failed.',
+                $this->failures,
+                count($dueSchedules)
+            ));
         }
     }
 
@@ -114,6 +131,16 @@ class ScheduleRunCommand extends Command
             // Execute with output capture
             $exitCode = $this->executeCommand($schedule);
 
+            // A command that throws inside handle() is caught by Command::execute(),
+            // which reports the message and returns FAILURE. Nothing propagates here,
+            // so a non-zero exit code is the only signal a task failed. Without this
+            // check the catch block below was dead for the ordinary case: onFailure
+            // never ran, the failure URL was never pinged, and the run reported
+            // success to cron.
+            if ($exitCode !== Command::SUCCESS) {
+                throw new RuntimeException("Command exited with code $exitCode.");
+            }
+
             // After hook
             $after = $schedule->getAfterCallback();
             if ($after) {
@@ -124,6 +151,8 @@ class ScheduleRunCommand extends Command
             $this->ping($schedule->getPingAfterUrl());
 
         } catch (Throwable $ex) {
+            ++$this->failures;
+
             $this->error("Failed [$description]: {$ex->getMessage()}");
 
             // Failure hook
