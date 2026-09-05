@@ -3,6 +3,7 @@
 namespace Simsoft\Console;
 
 use Closure;
+use InvalidArgumentException;
 use Psr\Container\ContainerInterface;
 use Simsoft\Console\Commands\ScheduleListCommand;
 use Simsoft\Console\Commands\ScheduleRunCommand;
@@ -246,19 +247,79 @@ class Application extends ConsoleApplication
     {
         foreach ($commandClasses as $commandClass) {
             if ($this->container?->has($commandClass)) {
-                $this->addCommand($this->container->get($commandClass));
+                $this->addCommand($this->resolveCommand($commandClass));
                 continue;
             }
 
-            if ($lazyLoad) {
-                $this->addCommand(forward_static_call([$commandClass, 'getLazyCommand']));
+            if (!$lazyLoad) {
+                $this->addCommand($this->instantiateCommand($commandClass, 'Registered command classes'));
                 continue;
             }
 
-            $this->addCommand(new $commandClass());
+            if (!is_a($commandClass, Command::class, true)) {
+                throw new InvalidArgumentException(sprintf(
+                    '%s is not a %s. Registered command classes must extend it.',
+                    $commandClass,
+                    Command::class
+                ));
+            }
+
+            $this->addCommand($commandClass::getLazyCommand());
         }
 
         return $this;
+    }
+
+    /**
+     * Resolve a command from the container, verifying what came back.
+     *
+     * A container is free to return anything for a given id. Without this check
+     * a misconfigured binding surfaced as a TypeError from inside Symfony, which
+     * named the offending type but not the id that produced it.
+     *
+     * @param string $id Container id — a PSR-11 id is any string, not just a class name.
+     * @return Command
+     */
+    protected function resolveCommand(string $id): Command
+    {
+        /** @var ContainerInterface $container */
+        $container = $this->container;
+        $command = $container->get($id);
+
+        if (!$command instanceof Command) {
+            throw new InvalidArgumentException(sprintf(
+                'The container returned %s for "%s", which is not a %s.',
+                get_debug_type($command),
+                $id,
+                Command::class
+            ));
+        }
+
+        return $command;
+    }
+
+    /**
+     * Instantiate a command class, verifying it is one.
+     *
+     * `new $class()` on an arbitrary string produced a TypeError from inside
+     * addCommand() naming only the type it received.
+     *
+     * @param string $commandClass
+     * @param string $context Named in the error message.
+     * @return Command
+     */
+    protected function instantiateCommand(string $commandClass, string $context = 'The default command class'): Command
+    {
+        if (!is_a($commandClass, Command::class, true)) {
+            throw new InvalidArgumentException(sprintf(
+                '%s is not a %s. %s must extend it.',
+                $commandClass,
+                Command::class,
+                $context
+            ));
+        }
+
+        return new $commandClass();
     }
 
     /**
@@ -269,17 +330,24 @@ class Application extends ConsoleApplication
      */
     public function withDefaultCommand(string $commandClass): static
     {
-        if ($this->container?->has($commandClass)) {
-            /** @var Command $command */
-            $command = $this->container->get($commandClass);
-            $this->addCommand($command);
-            return $this->setDefaultCommand($command->getName());
+        $command = $this->container?->has($commandClass)
+            ? $this->resolveCommand($commandClass)
+            : $this->instantiateCommand($commandClass);
+
+        $this->addCommand($command);
+
+        $name = $command->getName();
+
+        // Symfony rejects an empty name in addCommand() above, so this is
+        // unreachable in practice; it keeps the contract explicit rather than
+        // passing a null through to setDefaultCommand().
+        if ($name === null) {
+            throw new InvalidArgumentException(
+                "$commandClass has no name, so it cannot be the default command."
+            );
         }
 
-        /** @var Command $command */
-        $command = new $commandClass();
-        $this->addCommand($command);
-        return $this->setDefaultCommand($command->getName());
+        return $this->setDefaultCommand($name);
     }
 
     /**

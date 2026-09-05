@@ -6,6 +6,7 @@ use Countable;
 use InvalidArgumentException;
 use ReflectionClass;
 use RuntimeException;
+use Symfony\Component\Console\Application as ConsoleApplication;
 use Symfony\Component\Console\Command\Command as ConsoleCommand;
 use Symfony\Component\Console\Command\LazyCommand;
 use Symfony\Component\Console\Command\LockableTrait;
@@ -602,7 +603,7 @@ abstract class Command extends ConsoleCommand
      */
     public function call(string $commandName, array $input = []): int
     {
-        return $this->getApplication()->doRun(
+        return $this->requireApplication(__FUNCTION__)->doRun(
             new ArrayInput(array_merge(['command' => $commandName], $input)),
             $this->output
         );
@@ -622,7 +623,7 @@ abstract class Command extends ConsoleCommand
         $this->output->setVerbosity(OutputInterface::VERBOSITY_QUIET);
 
         try {
-            return $this->getApplication()->doRun(
+            return $this->requireApplication(__FUNCTION__)->doRun(
                 new ArrayInput(array_merge(['command' => $commandName], $input)),
                 $this->output
             );
@@ -631,4 +632,30 @@ abstract class Command extends ConsoleCommand
         }
     }
 
+    /**
+     * Get the application, or fail with an explanation.
+     *
+     * A command that was never added to an application cannot dispatch another
+     * one. getApplication() returns null there, and the bare call fataled on
+     * null with no indication of what was missing.
+     *
+     * @param string $method The calling method, named in the error.
+     * @return ConsoleApplication
+     * @throws RuntimeException If the command has no application.
+     */
+    protected function requireApplication(string $method): ConsoleApplication
+    {
+        $application = $this->getApplication();
+
+        if ($application === null) {
+            throw new RuntimeException(sprintf(
+                '%s() requires an application: %s is not registered with one. '
+                . 'Add it with addCommand() or withCommands() first.',
+                $method,
+                static::class
+            ));
+        }
+
+        return $application;
+    }
 }

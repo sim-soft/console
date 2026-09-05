@@ -75,7 +75,14 @@ class ScheduleRunCommand extends Command
             }
 
             if ($schedule->isRunInBackground()) {
-                $this->runInBackground($schedule);
+                // A launch failure must not abort the remaining tasks, and must
+                // still be reported like any other failure.
+                try {
+                    $this->runInBackground($schedule);
+                } catch (Throwable $ex) {
+                    ++$this->failures;
+                    $this->error($ex->getMessage());
+                }
                 continue;
             }
 
@@ -183,7 +190,7 @@ class ScheduleRunCommand extends Command
                 array_merge(['command' => $schedule->getCommandName()], $schedule->getArguments())
             );
 
-            $exitCode = $this->getApplication()->doRun($input, $bufferedOutput);
+            $exitCode = $this->requireApplication(__FUNCTION__)->doRun($input, $bufferedOutput);
 
             $content = $bufferedOutput->fetch();
 
@@ -217,7 +224,16 @@ class ScheduleRunCommand extends Command
         $command = $this->buildBackgroundCommand($schedule);
 
         if (PHP_OS_FAMILY === 'Windows') {
-            pclose(popen("start /B $command", 'r'));
+            $process = popen("start /B $command", 'r');
+
+            // popen() returns false if the process could not be started. Passing
+            // that straight to pclose() was a TypeError on top of an already
+            // failed launch, which buried the real problem.
+            if ($process === false) {
+                throw new RuntimeException("Unable to start background process for: $description");
+            }
+
+            pclose($process);
             return;
         }
 

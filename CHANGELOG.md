@@ -66,6 +66,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   failure URL was never pinged, `after` fired as though the task had succeeded,
   and `schedule:run` reported success to cron. Failure is now detected from the
   exit code
+- Registration and dispatch failures name the actual problem instead of
+  surfacing a raw `TypeError` from inside Symfony, or fataling on null:
+  `withCommands()` and `withDefaultCommand()` reject a class that is not a
+  `Command` (and say which one), a container returning a non-command names the
+  id and what came back, and `call()`/`callSilently()` on a command that was
+  never registered with an application explains that rather than calling
+  `doRun()` on null
+- `ScheduleRunCommand` handles `popen()` returning false when a background task
+  cannot be launched, instead of passing it to `pclose()` and raising a
+  `TypeError` on top of an already failed launch. The launch failure is counted
+  and reported like any other task failure, leaving the remaining tasks to run
 - `Command::withProgressBar()` rejects a `Countable` that is not also iterable.
   Its signature accepts one, but the body could not traverse it: the progress
   bar ran to 100% while the callback was never invoked, reporting a complete
@@ -116,6 +127,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   remain, each documented in place: `trait.unused` under `src/Traits` (the
   traits are consumed by applications, not by this package) and `new.static` in
   `Command` (guarded by a reflection check PHPStan cannot follow)
+- Static analysis runs at PHPStan level 8 rather than 6, so nullable types are
+  checked. The findings it surfaced were missing validation rather than missing
+  annotations, and were fixed as such — see the guards listed under Fixed
 
 ## [2.0.0] - 2026-05-28
 
