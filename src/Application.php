@@ -20,13 +20,18 @@ use Throwable;
  * Class Application
  *
  * Console application.
+ *
+ * Subclasses must keep the ($name, $version) constructor signature — make()
+ * and getApplication() both build instances with it.
+ *
+ * @phpstan-consistent-constructor
  */
 class Application extends ConsoleApplication
 {
-    /** @var array Closure commands */
+    /** @var array<string, CommandBuilder> Closure commands, keyed by command name. */
     protected static array $closureCommands = [];
 
-    /** @var array Command class */
+    /** @var array<int, class-string> Command classes. */
     protected static array $commands = [];
 
     /** @var bool Enable lazy load commands. */
@@ -57,13 +62,17 @@ class Application extends ConsoleApplication
     }
 
     /**
-     * Make application for closure command call.
+     * Get the application backing the static call() API.
      *
-     * @return static
+     * Returns self rather than static: the shared instance is supplied by the
+     * caller and may be any subclass, so the late static binding of the class
+     * this is called on says nothing about what comes back.
+     *
+     * @return self
      */
-    protected static function getApplication(): static
+    protected static function getApplication(): self
     {
-        if (static::$sharedApp instanceof static) {
+        if (static::$sharedApp instanceof self) {
             return static::$sharedApp;
         }
 
@@ -178,7 +187,7 @@ class Application extends ConsoleApplication
     /**
      * Register command classes.
      *
-     * @param array $commandClass
+     * @param array<int, class-string> $commandClass
      * @param bool $lazyLoad
      * @return void
      */
@@ -197,7 +206,7 @@ class Application extends ConsoleApplication
      *  Call command.
      *
      * @param string $commandName
-     * @param array $input
+     * @param array<string, mixed> $input
      * @param bool $silently
      * @return int
      */
@@ -229,7 +238,7 @@ class Application extends ConsoleApplication
     /**
      * Run console commands
      *
-     * @param string[] $commandClasses Command classes.
+     * @param array<int, class-string> $commandClasses Command classes.
      * @param bool $lazyLoad Enable lazy command. Default: true.
      * @return static
      */
@@ -282,13 +291,12 @@ class Application extends ConsoleApplication
     {
         $factories = [];
 
-        foreach (static::$closureCommands as $name => $entry) {
-            // Accept both raw builders and already-wrapped factories, so the
+        foreach (static::$closureCommands as $name => $builder) {
+            // Build into a local array and leave the registry untouched, so the
             // loader can be rebuilt any number of times. Rewriting the static
-            // array in place made a second call return an empty loader.
-            $factories[$name] = $entry instanceof Closure
-                ? $entry
-                : static fn(): Command => $entry->build();
+            // array in place made a second call return factories closing over a
+            // null builder.
+            $factories[$name] = static fn(): Command => $builder->build();
         }
 
         return new FactoryCommandLoader($factories);

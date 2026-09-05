@@ -32,3 +32,31 @@ jobs:
 
       - name: Run tests
         run: vendor/bin/phpunit --no-coverage
+
+  quality:
+    runs-on: ubuntu-latest
+
+    name: Static analysis
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Analysis is runtime-independent — PHPStan reads the PHP version from
+      # composer.json — so it runs once rather than across the matrix. Pinned to
+      # 8.3 because phpmd 2.x emits PHP 8.4 nullable-parameter deprecations from
+      # its own vendor code, which would bury any real finding.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=512M
+
+      - name: Run PHPMD
+        run: vendor/bin/phpmd src text phpmd.xml

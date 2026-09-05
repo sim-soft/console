@@ -4,12 +4,12 @@ namespace Simsoft\Console;
 
 use Countable;
 use InvalidArgumentException;
+use ReflectionClass;
 use RuntimeException;
 use Symfony\Component\Console\Command\Command as ConsoleCommand;
 use Symfony\Component\Console\Command\LazyCommand;
 use Symfony\Component\Console\Command\LockableTrait;
 use Symfony\Component\Console\Helper\{FormatterHelper,
-    HelperInterface,
     ProgressBar,
     ProgressIndicator,
     QuestionHelper,
@@ -29,6 +29,10 @@ use Throwable;
  *
  * @package Simsoft\Console
  *
+ * A subclass that adds required constructor arguments cannot be lazy-loaded;
+ * getLazyCommand() rejects it with an explanation rather than failing later
+ * with an ArgumentCountError.
+ *
  * @author: vzangloo <vzangloo@7mayday.com>
  * @since 1.0.0
  */
@@ -43,7 +47,7 @@ abstract class Command extends ConsoleCommand
     protected OutputInterface $output;
 
     /** @var FormatterHelper Command output formatter. */
-    protected HelperInterface $formatter;
+    protected FormatterHelper $formatter;
 
     /** @var bool Enable command lock to prevent parallel execution. */
     protected bool $lockable = false;
@@ -101,7 +105,12 @@ abstract class Command extends ConsoleCommand
     {
         $this->input = $input;
         $this->output = $output;
-        $this->formatter = $this->getHelper('formatter');
+
+        $formatter = $this->getHelper('formatter');
+        if (!$formatter instanceof FormatterHelper) {
+            throw new RuntimeException('The "formatter" helper is not a FormatterHelper.');
+        }
+        $this->formatter = $formatter;
 
         if ($this->lockable && !$this->lock()) {
             $this->comment('The command is already running in another process.');
@@ -159,7 +168,7 @@ abstract class Command extends ConsoleCommand
     /**
      * Run with progress bar
      *
-     * @param Countable|iterable $data
+     * @param Countable|iterable<array-key, mixed> $data
      * @param callable $callback A callable to handle each data.
      * @param int $maxSteps
      * @return void
@@ -202,7 +211,7 @@ abstract class Command extends ConsoleCommand
      *
      * @param string|null $format Display format (null for auto-detect).
      * @param int $indicatorChangeInterval Change interval in milliseconds.
-     * @param array|null $indicatorValues Animated indicator characters.
+     * @param array<int, string>|null $indicatorValues Animated indicator characters.
      * @return ProgressIndicator
      */
     public function createProgressIndicator(
@@ -218,7 +227,7 @@ abstract class Command extends ConsoleCommand
      * Render a tree structure to the output.
      *
      * @param string $root Root node label.
-     * @param iterable $values Tree data (nested arrays or TreeNode instances).
+     * @param iterable<array-key, mixed> $values Tree data (nested arrays or TreeNode instances).
      * @param TreeStyle|null $style Tree style (null for default).
      * @return void
      */
@@ -230,8 +239,8 @@ abstract class Command extends ConsoleCommand
     /**
      * Display data in table.
      *
-     * @param array $headers Table headers.
-     * @param iterable $data 2 dimensional array data to be displayed.
+     * @param array<int, string> $headers Table headers.
+     * @param iterable<array-key, mixed> $data 2 dimensional array data to be displayed.
      * @param callable|null $closure A closure to return array of data.
      * @return void
      * @throws InvalidArgumentException
@@ -366,7 +375,7 @@ abstract class Command extends ConsoleCommand
     /**
      * Get all arguments.
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function arguments(): array
     {
@@ -388,7 +397,7 @@ abstract class Command extends ConsoleCommand
     /**
      * Get all options.
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function options(): array
     {
@@ -497,13 +506,13 @@ abstract class Command extends ConsoleCommand
      * Prompt multiple choice question.
      *
      * @param string $question
-     * @param array $choices
+     * @param array<array-key, string> $choices
      * @param mixed|null $defaultIndex
      * @param bool $allowMultipleSelections
      * @param int|null $maxAttempt Max attempts on invalid input. Null means unlimited.
      * @param string $prompt
      * @param string $errorMessage
-     * @return string|array
+     * @return string|array<int, string>
      * @throws InvalidArgumentException If $maxAttempt is less than 1.
      */
     public function choice(
@@ -543,10 +552,26 @@ abstract class Command extends ConsoleCommand
     /**
      * Get lazy command of this command.
      *
+     * The command is constructed with no arguments when first resolved, so a
+     * command with required constructor dependencies cannot be lazy-loaded.
+     * Register it eagerly, or resolve it from the container instead.
+     *
      * @return LazyCommand
+     * @throws RuntimeException If the command requires constructor arguments.
      */
     public static function getLazyCommand(): LazyCommand
     {
+        $constructor = (new ReflectionClass(static::class))->getConstructor();
+
+        if ($constructor !== null && $constructor->getNumberOfRequiredParameters() > 0) {
+            throw new RuntimeException(sprintf(
+                '%s cannot be lazy-loaded because its constructor requires %d argument(s). '
+                . 'Register it with withCommands([...], lazyLoad: false), or resolve it from a container.',
+                static::class,
+                $constructor->getNumberOfRequiredParameters()
+            ));
+        }
+
         return new LazyCommand(
             static::$name,
             [],
@@ -559,6 +584,9 @@ abstract class Command extends ConsoleCommand
     /**
      * Call another console command.
      *
+     * @param string $commandName
+     * @param array<string, mixed> $input
+     * @return int
      * @throws Throwable
      */
     public function call(string $commandName, array $input = []): int
@@ -572,6 +600,9 @@ abstract class Command extends ConsoleCommand
     /**
      * Call another console command without output.
      *
+     * @param string $commandName
+     * @param array<string, mixed> $input
+     * @return int
      * @throws Throwable
      */
     public function callSilently(string $commandName, array $input = []): int

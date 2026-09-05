@@ -52,10 +52,11 @@ class Schedule
      * Constructor.
      *
      * @param string $commandName The command to schedule.
-     * @param array $arguments Command arguments.
+     * @param array<string, mixed> $arguments Command arguments.
      */
     public function __construct(
         protected string $commandName,
+        /** @var array<string, mixed> */
         protected array  $arguments = [],
     )
     {
@@ -492,6 +493,9 @@ class Schedule
         return $this->commandName;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getArguments(): array
     {
         return $this->arguments;

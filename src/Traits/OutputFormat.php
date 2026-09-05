@@ -9,10 +9,10 @@ use Symfony\Component\Console\Input\InputOption;
  *
  * Adds a --format option to switch between table, JSON, and CSV output.
  *
- * @method addOption(string $name, string|array|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array|\Closure $suggestedValues = []): static
- * @method option(string $name, mixed $default = null): mixed
- * @method table(array $headers, iterable $data, ?callable $closure = null): void
- * @method line(string $message): void
+ * @method static addOption(string $name, string|array<int, string>|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array<int|string, string>|\Closure $suggestedValues = [])
+ * @method mixed option(string $name, mixed $default = null)
+ * @method void table(array<int, string> $headers, iterable<array-key, mixed> $data, ?callable $closure = null)
+ * @method void line(string $message)
  */
 trait OutputFormat
 {

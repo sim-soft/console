@@ -9,9 +9,9 @@ use Symfony\Component\Console\Input\InputOption;
  *
  * Adds a --dry-run flag that allows commands to simulate actions without side effects.
  *
- * @method addOption(string $name, string|array|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array|\Closure $suggestedValues = []): static
- * @method option(string $name, mixed $default = null): mixed
- * @method comment(string $message): void
+ * @method static addOption(string $name, string|array<int, string>|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array<int|string, string>|\Closure $suggestedValues = [])
+ * @method mixed option(string $name, mixed $default = null)
+ * @method void comment(string $message)
  */
 trait DryRunOption
 {

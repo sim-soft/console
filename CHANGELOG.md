@@ -56,6 +56,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Application::run()` and `Application::call()` render the throwable instead of
   returning a bare failure code with no explanation. A silent `call()` stays
   silent
+- `Command::getLazyCommand()` reports that a command with required constructor
+  arguments cannot be lazy-loaded, and names the alternatives. It previously
+  fataled with an `ArgumentCountError` at resolution time, far from the
+  registration that caused it
 
 ### Added
 
@@ -63,6 +67,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scheduler, and all — with the static `call()` API
 - `Application::flushGlobal()` drops the shared and auto-built instances, for
   tests and long-running workers where static state would otherwise leak
+- CI now runs PHPStan and PHPMD alongside the test suite, in a separate job, so
+  the pipeline covers everything `composer check` runs locally
 
 ### Changed
 
@@ -85,6 +91,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Values below 1 throw `InvalidArgumentException`
 - **Behavior:** a lockable command that cannot acquire its lock exits with
   `SUCCESS` rather than waiting for the lock to be freed
+- `phpstan.neon` no longer suppresses 13 broad error patterns. The underlying
+  issues are fixed instead: 19 malformed `@method` tags across the traits used
+  `name(): Type` rather than PHPDoc's `Type name()` syntax and were parsed as
+  nothing; array and iterable types throughout the public API now declare their
+  value types; and `Command::$formatter` is typed `FormatterHelper` rather than
+  the base `HelperInterface` it was annotated as. Two narrowly scoped ignores
+  remain, each documented in place: `trait.unused` under `src/Traits` (the
+  traits are consumed by applications, not by this package) and `new.static` in
+  `Command` (guarded by a reflection check PHPStan cannot follow)
 
 ## [2.0.0] - 2026-05-28
 

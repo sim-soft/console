@@ -10,8 +10,8 @@ use Throwable;
  *
  * Provides retry logic with configurable attempts, delay, and backoff.
  *
- * @method error(string $message): void
- * @method comment(string $message): void
+ * @method void error(string $message)
+ * @method void comment(string $message)
  */
 trait RetryableTask
 {
