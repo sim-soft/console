@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `Command::choice()` no longer disables input interactivity as a side effect.
+  Previously every prompt after a `choice()` call was silently skipped and
+  returned its default. The `$maxAttempt` argument is now delegated to Symfony's
+  `Question::setMaxAttempts()`, so it retries on *invalid* input instead of
+  re-asking the question a fixed number of times
+- Command locks are now released when `handle()` throws. Previously a failing
+  lockable command leaked its lock for the lifetime of the process
+- `$lockable = true` no longer blocks indefinitely when the lock is held by
+  another process. It now skips with a notice, as the documentation described
+- `Application::run()` returns a failure exit code after an unrecoverable
+  error. Previously it returned `0`, reporting success to the shell and to CI
+
+### Changed
+
+- **Behavior:** `choice(..., maxAttempt: N)` now asks once and retries only on
+  invalid input, instead of prompting N times and returning the last answer.
+  Values below 1 throw `InvalidArgumentException`
+- **Behavior:** a lockable command that cannot acquire its lock exits with
+  `SUCCESS` rather than waiting for the lock to be freed
+
 ## [2.0.0] - 2026-05-28
 
 ### Changed

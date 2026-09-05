@@ -7,6 +7,7 @@ use Psr\Container\ContainerInterface;
 use Simsoft\Console\Commands\ScheduleListCommand;
 use Simsoft\Console\Commands\ScheduleRunCommand;
 use Symfony\Component\Console\Application as ConsoleApplication;
+use Symfony\Component\Console\Command\Command as ConsoleCommand;
 use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
@@ -260,6 +261,6 @@ class Application extends ConsoleApplication
         } catch (Throwable) {
             // Unrecoverable error — return failure code
         }
-        return 0;
+        return ConsoleCommand::FAILURE;
     }
 }

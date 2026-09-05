@@ -103,21 +103,20 @@ abstract class Command extends ConsoleCommand
         $this->output = $output;
         $this->formatter = $this->getHelper('formatter');
 
+        if ($this->lockable && !$this->lock()) {
+            $this->comment('The command is already running in another process.');
+            return ConsoleCommand::SUCCESS;
+        }
+
         try {
-
-            if ($this->lockable) {
-                if ($this->lock(null, true)) {
-                    $this->handle();
-                }
-                $this->release();
-                return ConsoleCommand::SUCCESS;
-            }
-
             $this->handle();
-
         } catch (Throwable $throwable) {
             $this->error($throwable->getMessage());
             return ConsoleCommand::FAILURE;
+        } finally {
+            if ($this->lockable) {
+                $this->release();
+            }
         }
 
         return ConsoleCommand::SUCCESS;
@@ -457,10 +456,11 @@ abstract class Command extends ConsoleCommand
      * @param array $choices
      * @param mixed|null $defaultIndex
      * @param bool $allowMultipleSelections
-     * @param int|null $maxAttempt
+     * @param int|null $maxAttempt Max attempts on invalid input. Null means unlimited.
      * @param string $prompt
      * @param string $errorMessage
      * @return string|array
+     * @throws InvalidArgumentException If $maxAttempt is less than 1.
      */
     public function choice(
         string $question,
@@ -472,24 +472,17 @@ abstract class Command extends ConsoleCommand
         string $errorMessage = 'Invalid value: "%s"',
     ): string|array {
 
-        if ($maxAttempt && $defaultIndex === null) {
-            $defaultIndex = array_key_first($choices);
-        }
-
         $question = (new ChoiceQuestion($question, $choices, $defaultIndex))
             ->setMultiselect($allowMultipleSelections)
             ->setPrompt($prompt)
             ->setErrorMessage($errorMessage)
+            ->setMaxAttempts($maxAttempt)
         ;
 
         /** @var QuestionHelper $helper */
         $helper = $this->getHelper('question');
-        do {
-            $choice = $helper->ask($this->input, $this->output, $question);
-            $this->input->setInteractive((bool) --$maxAttempt);
-        } while ($maxAttempt > 0);
 
-        return $choice;
+        return $helper->ask($this->input, $this->output, $question);
     }
 
     /**
