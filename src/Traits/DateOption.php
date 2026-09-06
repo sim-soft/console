@@ -79,11 +79,33 @@ trait DateOption
             return null;
         }
 
+        if (!is_string($value)) {
+            throw new InvalidArgumentException(sprintf(
+                'The --%s option must be a string, got %s.',
+                $name,
+                get_debug_type($value)
+            ));
+        }
+
+        $value = trim($value);
         $formats = (array)$format;
 
         foreach ($formats as $fmt) {
-            $date = DateTimeImmutable::createFromFormat($fmt, $value);
+            // The leading '!' resets every field not named by the format to the
+            // epoch. Without it createFromFormat() fills them from the current
+            // clock, so --date=2024-06-15 parsed to 2024-06-15 at whatever time
+            // the command happened to run — and a date-only format like 'Y-m'
+            // took today's day of month as well. Anything comparing the result
+            // against a timestamp then gave a different answer depending on the
+            // hour, which is the kind of bug that reproduces only in the
+            // afternoon. defaultToday already returned midnight, so the two
+            // paths of this method also disagreed with each other.
+            $date = DateTimeImmutable::createFromFormat('!' . $fmt, $value);
 
+            // Compared against the original format: '!' is a parsing
+            // instruction and never appears in output. A value PHP would
+            // otherwise roll over ('2024-13-45' becoming '2025-02-14') fails
+            // this and is rejected.
             if ($date && $date->format($fmt) === $value) {
                 return $date;
             }

@@ -140,6 +140,13 @@ trait DateRangeOption
      * '2027-02-14'. Re-formatting the result and comparing it to the input
      * rejects any value that was not already a valid date.
      *
+     * The leading '!' resets fields the format does not name, so a date-only
+     * value parses to midnight instead of the current clock time. Without it a
+     * range boundary carried the time of day the command ran: --to-date given a
+     * day excluded records from that morning when the report ran at 06:00 but
+     * included them at 18:00, so the same command over the same data returned
+     * different rows depending on when cron fired.
+     *
      * @param string $value The raw input value.
      * @param string $format Expected date format.
      * @return DateTimeImmutable|null Null when the value is not a valid date.
@@ -147,8 +154,10 @@ trait DateRangeOption
     protected function parseStrictDate(string $value, string $format = 'Y-m-d'): ?DateTimeImmutable
     {
         $value = trim($value);
-        $date = DateTimeImmutable::createFromFormat($format, $value);
+        $date = DateTimeImmutable::createFromFormat('!' . $format, $value);
 
+        // Compared against the original format: '!' is a parsing instruction
+        // and never appears in output.
         if ($date === false || $date->format($format) !== $value) {
             return null;
         }

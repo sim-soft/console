@@ -45,6 +45,11 @@ php console report:sales --month=2024-03
 php console report:sales --from-date=2024-03-01 --to-date=2024-03-31
 ```
 
+Both boundaries are midnight on the day given, so the range depends only on the
+input and not on the hour the command ran. `--to-date` is therefore the *start*
+of that day: to include the whole of it, compare against
+`$toDate->modify('+1 day')` or select `< $toDate + 1 day`.
+
 ## DateOption
 
 Single `--date` option with validation. Supports multiple formats with
@@ -98,6 +103,13 @@ php console report:daily                      # Uses today if defaultToday: true
 Formats are tried in order — put the most common format first to avoid
 ambiguity (e.g., `01/02/2024` is Feb 1st with `d/m/Y` but Jan 2nd with `m/d/Y`).
 
+Fields the format does not name are reset rather than taken from the current
+clock, so `--date=2024-06-15` is midnight on that day whatever time the command
+runs, and `Y-m` gives the first of the month. A format that does name the time
+(`Y-m-d H:i:s`) keeps what was typed. If you want the boundary at the end of
+the day, take it from the parsed value — `$date->modify('+1 day')` — rather
+than relying on the hour the command happened to start.
+
 ## FileOption
 
 `--file` option supporting single or comma-separated paths.
@@ -132,6 +144,11 @@ class ProcessCommand extends Command
 php console file:process --file=report.xlsx
 php console file:process --file="a.xlsx,b.xlsx,c.xlsx"
 ```
+
+Empty entries are dropped rather than turned into a filename: `--file=a,,b`
+gives two files, and an empty `--file=` gives an empty array (or `null` in
+single-file mode) instead of a file named after the extension alone. Passing an
+array as `$default` is treated as a comma-separated list.
 
 ## FileDirectory
 

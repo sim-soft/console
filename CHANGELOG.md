@@ -142,6 +142,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Its signature accepts one, but the body could not traverse it: the progress
   bar ran to 100% while the callback was never invoked, reporting a complete
   run over nothing
+- `DateOption` and `DateRangeOption` parse dates at midnight instead of
+  inheriting the current time of day. `createFromFormat()` fills fields the
+  format does not name from the clock, so `--date=2024-06-15` carried whatever
+  time the command started and a `Y-m` format took today's day of month as
+  well. Any comparison against a timestamp then depended on when the command
+  ran: a report bounded by `--to-date` excluded that morning's records at 06:00
+  and included them at 18:00, over the same data. `DateOption` also disagreed
+  with itself, since `defaultToday` already returned midnight. A format that
+  names the time still keeps it, and out-of-range values are still rejected
+- `FileOption` drops empty entries instead of turning them into a filename. The
+  extension was appended unconditionally and the `array_filter()` that followed
+  could not remove the result, because `".xlsx"` is not empty: `--file=a,,b`
+  yielded a phantom `.xlsx` between the two real files, and `--file=` yielded a
+  list containing nothing but one. A non-string value is now reported by name
+  rather than raising a `TypeError` from `trim()` inside the trait, and an
+  array — a documented shape for `$default` — is read as a comma-separated list
+  instead of failing the same way
 
 ### Added
 
@@ -212,6 +229,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Behavior:** `Schedule::cron()` throws `InvalidArgumentException` for an
   invalid expression. Registration that previously succeeded and failed later
   at run time now fails immediately
+- **Behavior:** dates parsed by `DateOption` and `DateRangeOption` are midnight
+  on the day given unless the format names a time. Code that relied on the
+  boundary carrying the current time — usually an inclusive `--to-date` that
+  worked only because reports ran in the evening — should compare against
+  `$toDate->modify('+1 day')` instead
+- **Behavior:** `fileOption()` returns `null` for an empty single-file value
+  and omits empty entries from the multiple-file list, rather than returning a
+  name consisting of the extension alone
 - **Behavior:** `choice()` declares `$defaultIndex` as
   `bool|float|int|string|null` rather than `mixed`. Symfony's `ChoiceQuestion`
   has always rejected anything else, so this only moves the error to the call
