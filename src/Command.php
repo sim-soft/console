@@ -4,12 +4,13 @@ namespace Simsoft\Console;
 
 use Countable;
 use InvalidArgumentException;
+use ReflectionClass;
 use RuntimeException;
+use Symfony\Component\Console\Application as ConsoleApplication;
 use Symfony\Component\Console\Command\Command as ConsoleCommand;
 use Symfony\Component\Console\Command\LazyCommand;
 use Symfony\Component\Console\Command\LockableTrait;
 use Symfony\Component\Console\Helper\{FormatterHelper,
-    HelperInterface,
     ProgressBar,
     ProgressIndicator,
     QuestionHelper,
@@ -29,6 +30,10 @@ use Throwable;
  *
  * @package Simsoft\Console
  *
+ * A subclass that adds required constructor arguments cannot be lazy-loaded;
+ * getLazyCommand() rejects it with an explanation rather than failing later
+ * with an ArgumentCountError.
+ *
  * @author: vzangloo <vzangloo@7mayday.com>
  * @since 1.0.0
  */
@@ -43,7 +48,7 @@ abstract class Command extends ConsoleCommand
     protected OutputInterface $output;
 
     /** @var FormatterHelper Command output formatter. */
-    protected HelperInterface $formatter;
+    protected FormatterHelper $formatter;
 
     /** @var bool Enable command lock to prevent parallel execution. */
     protected bool $lockable = false;
@@ -101,41 +106,90 @@ abstract class Command extends ConsoleCommand
     {
         $this->input = $input;
         $this->output = $output;
-        $this->formatter = $this->getHelper('formatter');
+
+        $formatter = $this->getHelper('formatter');
+        if (!$formatter instanceof FormatterHelper) {
+            throw new RuntimeException('The "formatter" helper is not a FormatterHelper.');
+        }
+        $this->formatter = $formatter;
+
+        if ($this->lockable && !$this->lock()) {
+            $this->comment('The command is already running in another process.');
+            return ConsoleCommand::SUCCESS;
+        }
 
         try {
-
-            if ($this->lockable) {
-                if ($this->lock(null, true)) {
-                    $this->handle();
-                }
-                $this->release();
-                return ConsoleCommand::SUCCESS;
-            }
-
             $this->handle();
-
         } catch (Throwable $throwable) {
-            $this->error($throwable->getMessage());
+            $this->reportThrowable($throwable);
             return ConsoleCommand::FAILURE;
+        } finally {
+            if ($this->lockable) {
+                $this->release();
+            }
         }
 
         return ConsoleCommand::SUCCESS;
     }
 
     /**
+     * Report an uncaught throwable from handle().
+     *
+     * The one-line message is kept as the default so normal runs stay readable.
+     * Anything more detailed — exception class, origin, trace, previous
+     * exceptions — is only useful when debugging, so it is gated behind -v.
+     *
+     * @param Throwable $throwable
+     * @return void
+     */
+    protected function reportThrowable(Throwable $throwable): void
+    {
+        $this->error($throwable->getMessage());
+
+        if ($this->output->getVerbosity() < OutputInterface::VERBOSITY_VERBOSE) {
+            return;
+        }
+
+        for ($ex = $throwable, $depth = 0; $ex !== null; $ex = $ex->getPrevious(), $depth++) {
+            $this->output->writeln(sprintf(
+                '<comment>%s%s</comment>: %s <comment>in</comment> %s:%d',
+                $depth > 0 ? 'Caused by ' : '',
+                $ex::class,
+                $ex->getMessage(),
+                $ex->getFile(),
+                $ex->getLine()
+            ));
+
+            if ($this->output->getVerbosity() >= OutputInterface::VERBOSITY_VERY_VERBOSE) {
+                $this->output->writeln($ex->getTraceAsString());
+            }
+        }
+    }
+
+    /**
      * Run with progress bar
      *
-     * @param Countable|iterable $data
+     * A Countable that is not also iterable cannot be walked. It used to render a
+     * full progress bar while never invoking the callback once, reporting a
+     * complete run over nothing; it is now rejected outright.
+     *
+     * @param Countable|iterable<array-key, mixed> $data
      * @param callable $callback A callable to handle each data.
      * @param int $maxSteps
      * @return void
+     * @throws InvalidArgumentException If $data is Countable but not iterable.
      */
     public function withProgressBar(Countable|iterable $data, callable $callback, int $maxSteps = 0): void
     {
-        if (is_iterable($data)) {
-            $data = iterator_to_array($data);
+        if (!is_iterable($data)) {
+            throw new InvalidArgumentException(sprintf(
+                '%s is Countable but not iterable, so withProgressBar() cannot traverse it. '
+                . 'Pass an array, a Traversable, or something implementing both.',
+                $data::class
+            ));
         }
+
+        $data = iterator_to_array($data);
 
         $progress = new ProgressBar($this->output, count($data));
 
@@ -169,7 +223,7 @@ abstract class Command extends ConsoleCommand
      *
      * @param string|null $format Display format (null for auto-detect).
      * @param int $indicatorChangeInterval Change interval in milliseconds.
-     * @param array|null $indicatorValues Animated indicator characters.
+     * @param array<int, string>|null $indicatorValues Animated indicator characters.
      * @return ProgressIndicator
      */
     public function createProgressIndicator(
@@ -185,7 +239,7 @@ abstract class Command extends ConsoleCommand
      * Render a tree structure to the output.
      *
      * @param string $root Root node label.
-     * @param iterable $values Tree data (nested arrays or TreeNode instances).
+     * @param iterable<array-key, mixed> $values Tree data (nested arrays or TreeNode instances).
      * @param TreeStyle|null $style Tree style (null for default).
      * @return void
      */
@@ -197,8 +251,8 @@ abstract class Command extends ConsoleCommand
     /**
      * Display data in table.
      *
-     * @param array $headers Table headers.
-     * @param iterable $data 2 dimensional array data to be displayed.
+     * @param array<int, string> $headers Table headers.
+     * @param iterable<array-key, mixed> $data 2 dimensional array data to be displayed.
      * @param callable|null $closure A closure to return array of data.
      * @return void
      * @throws InvalidArgumentException
@@ -301,14 +355,14 @@ abstract class Command extends ConsoleCommand
     /**
      * Display blank lines.
      *
-     * @param int $repeat Total
+     * Blank lines are never timestamped, regardless of $messageTimeStamp.
+     *
+     * @param int $repeat Number of additional blank lines. Default: 0 (one line).
      * @return void
      */
     public function newLine(int $repeat = 0): void
     {
-        do {
-            $this->line('');
-        } while (--$repeat > 0);
+        $this->output->write(str_repeat(PHP_EOL, max(1, $repeat)));
     }
 
     /**
@@ -321,7 +375,9 @@ abstract class Command extends ConsoleCommand
      */
     public function errorBlock(string $section, string $message, bool $labelOff = false): void
     {
-        $label = $this->messageTimeStamp && !$labelOff? $this->getCurrentDatetime() . '] ': '';
+        $label = $this->messageTimeStamp && !$labelOff
+            ? '[' . $this->getCurrentDatetime() . '] '
+            : '';
 
         $this->output->writeln(
             $this->formatter->formatBlock([$label.$section, $label.$message], 'error')
@@ -331,7 +387,7 @@ abstract class Command extends ConsoleCommand
     /**
      * Get all arguments.
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function arguments(): array
     {
@@ -353,7 +409,7 @@ abstract class Command extends ConsoleCommand
     /**
      * Get all options.
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function options(): array
     {
@@ -388,6 +444,14 @@ abstract class Command extends ConsoleCommand
             return $app->getContainer()->get($id);
         }
 
+        if ($app instanceof Application && $app->getContainer() === null) {
+            throw new RuntimeException(
+                "Unable to resolve '$id' — no container is configured on this application. "
+                . 'If this command was invoked through Application::call(), call shareGlobally() '
+                . 'on the application you configured with withContainer().'
+            );
+        }
+
         throw new RuntimeException("Unable to resolve '$id' — no container configured or service not found.");
     }
 
@@ -417,9 +481,10 @@ abstract class Command extends ConsoleCommand
      */
     public function ask(string $question, bool|float|int|null|string $default = null): bool|float|int|null|string
     {
-        /** @var QuestionHelper $helper */
-        $helper = $this->getHelper('question');
-        return $helper->ask($this->input, $this->output, new Question($question, $default));
+        return $this->scalarAnswer(
+            $this->askQuestion(new Question($question, $default)),
+            __FUNCTION__
+        );
     }
 
     /**
@@ -431,9 +496,10 @@ abstract class Command extends ConsoleCommand
      */
     public function secret(string $question, bool|float|int|null|string $default = null): bool|float|int|null|string
     {
-        /** @var QuestionHelper $helper */
-        $helper = $this->getHelper('question');
-        return $helper->ask($this->input, $this->output, (new Question($question, $default))->setHidden(true));
+        return $this->scalarAnswer(
+            $this->askQuestion((new Question($question, $default))->setHidden(true)),
+            __FUNCTION__
+        );
     }
 
     /**
@@ -445,51 +511,108 @@ abstract class Command extends ConsoleCommand
      */
     public function confirm(string $question, bool $default = false): bool
     {
-        /** @var QuestionHelper $helper */
-        $helper = $this->getHelper('question');
-        return $helper->ask($this->input, $this->output, new ConfirmationQuestion($question, $default));
+        // ConfirmationQuestion installs a normalizer that reduces every answer to
+        // a bool, and the non-interactive path returns the bool default, so this
+        // cast never changes a value — it just states the contract to the caller.
+        return (bool)$this->askQuestion(new ConfirmationQuestion($question, $default));
     }
 
     /**
      * Prompt multiple choice question.
      *
      * @param string $question
-     * @param array $choices
-     * @param mixed|null $defaultIndex
+     * @param array<array-key, string> $choices
+     * @param bool|float|int|string|null $defaultIndex A key of $choices, or null for no default.
      * @param bool $allowMultipleSelections
-     * @param int|null $maxAttempt
+     * @param int|null $maxAttempt Max attempts on invalid input. Null means unlimited.
      * @param string $prompt
      * @param string $errorMessage
-     * @return string|array
+     * @return string|array<int, string>
+     * @throws InvalidArgumentException If $maxAttempt is less than 1.
+     * @throws RuntimeException If input is non-interactive and no default was given.
      */
     public function choice(
         string $question,
         array $choices,
-        mixed $defaultIndex = null,
+        bool|float|int|string|null $defaultIndex = null,
         bool $allowMultipleSelections = false,
         ?int $maxAttempt = null,
         string $prompt = ' > ',
         string $errorMessage = 'Invalid value: "%s"',
     ): string|array {
 
-        if ($maxAttempt && $defaultIndex === null) {
-            $defaultIndex = array_key_first($choices);
-        }
-
-        $question = (new ChoiceQuestion($question, $choices, $defaultIndex))
+        $choiceQuestion = (new ChoiceQuestion($question, $choices, $defaultIndex))
             ->setMultiselect($allowMultipleSelections)
             ->setPrompt($prompt)
             ->setErrorMessage($errorMessage)
+            ->setMaxAttempts($maxAttempt)
         ;
 
+        $answer = $this->askQuestion($choiceQuestion);
+
+        // Non-interactive input with no default answers null, which does not
+        // satisfy the declared return type: the call died with a TypeError
+        // naming this method rather than the missing default. That is the usual
+        // shape of the bug — a command written against a terminal, later run
+        // from cron or a test with --no-interaction.
+        if ($answer === null) {
+            throw new RuntimeException(sprintf(
+                'choice("%s") has no answer: input is not interactive and no default was given. '
+                . 'Pass $defaultIndex, or guard the prompt with $this->input->isInteractive().',
+                $question
+            ));
+        }
+
+        if (is_string($answer) || is_array($answer)) {
+            /** @var string|array<int, string> $answer */
+            return $answer;
+        }
+
+        throw new RuntimeException(sprintf(
+            'choice("%s") answered %s, which is neither a choice nor a list of them.',
+            $question,
+            get_debug_type($answer)
+        ));
+    }
+
+    /**
+     * Put a question to the user.
+     *
+     * @param Question $question
+     * @return mixed Whatever the helper answered — narrowed by the caller.
+     */
+    protected function askQuestion(Question $question): mixed
+    {
         /** @var QuestionHelper $helper */
         $helper = $this->getHelper('question');
-        do {
-            $choice = $helper->ask($this->input, $this->output, $question);
-            $this->input->setInteractive((bool) --$maxAttempt);
-        } while ($maxAttempt > 0);
 
-        return $choice;
+        return $helper->ask($this->input, $this->output, $question);
+    }
+
+    /**
+     * Narrow a helper answer to the scalar union the prompt methods declare.
+     *
+     * QuestionHelper::ask() returns mixed: a normalizer or validator set on the
+     * question can return anything at all. Nothing here installs one, so this is
+     * a guard on the contract rather than a path taken in practice — but when a
+     * subclass does install one, this names the method that broke instead of
+     * failing with a bare TypeError on the return.
+     *
+     * @param mixed $answer
+     * @param string $method The calling method, named in the error.
+     * @return bool|float|int|string|null
+     */
+    protected function scalarAnswer(mixed $answer, string $method): bool|float|int|string|null
+    {
+        if ($answer !== null && !is_scalar($answer)) {
+            throw new RuntimeException(sprintf(
+                '%s() answered %s; expected a scalar or null.',
+                $method,
+                get_debug_type($answer)
+            ));
+        }
+
+        return $answer;
     }
 
     /**
@@ -506,10 +629,26 @@ abstract class Command extends ConsoleCommand
     /**
      * Get lazy command of this command.
      *
+     * The command is constructed with no arguments when first resolved, so a
+     * command with required constructor dependencies cannot be lazy-loaded.
+     * Register it eagerly, or resolve it from the container instead.
+     *
      * @return LazyCommand
+     * @throws RuntimeException If the command requires constructor arguments.
      */
     public static function getLazyCommand(): LazyCommand
     {
+        $constructor = (new ReflectionClass(static::class))->getConstructor();
+
+        if ($constructor !== null && $constructor->getNumberOfRequiredParameters() > 0) {
+            throw new RuntimeException(sprintf(
+                '%s cannot be lazy-loaded because its constructor requires %d argument(s). '
+                . 'Register it with withCommands([...], lazyLoad: false), or resolve it from a container.',
+                static::class,
+                $constructor->getNumberOfRequiredParameters()
+            ));
+        }
+
         return new LazyCommand(
             static::$name,
             [],
@@ -522,12 +661,15 @@ abstract class Command extends ConsoleCommand
     /**
      * Call another console command.
      *
+     * @param string $commandName
+     * @param array<string, mixed> $input
+     * @return int
      * @throws Throwable
      */
     public function call(string $commandName, array $input = []): int
     {
-        return $this->getApplication()->doRun(
-            new ArrayInput(array_merge(['command' => $commandName], $input)),
+        return $this->requireApplication(__FUNCTION__)->doRun(
+            $this->subCommandInput($commandName, $input),
             $this->output
         );
     }
@@ -535,15 +677,74 @@ abstract class Command extends ConsoleCommand
     /**
      * Call another console command without output.
      *
+     * @param string $commandName
+     * @param array<string, mixed> $input
+     * @return int
      * @throws Throwable
      */
     public function callSilently(string $commandName, array $input = []): int
     {
+        $verbosity = $this->output->getVerbosity();
         $this->output->setVerbosity(OutputInterface::VERBOSITY_QUIET);
-        return $this->getApplication()->doRun(
-            new ArrayInput(array_merge(['command' => $commandName], $input)),
-            $this->output
-        );
+
+        try {
+            return $this->requireApplication(__FUNCTION__)->doRun(
+                $this->subCommandInput($commandName, $input),
+                $this->output
+            );
+        } finally {
+            $this->output->setVerbosity($verbosity);
+        }
     }
 
+    /**
+     * Build input for a command dispatched from this one.
+     *
+     * A fresh ArrayInput is interactive by default, so a command run with
+     * --no-interaction dispatched a sub-command that could prompt anyway: the
+     * flag stopped at the first command. Under cron or a supervised worker the
+     * sub-command then blocked on stdin with nothing to answer it.
+     *
+     * Interactivity is inherited rather than forced off, because unlike the
+     * static Application::call() this may legitimately be running at a
+     * terminal, where a sub-command should still be able to ask.
+     *
+     * @param string $commandName
+     * @param array<string, mixed> $input
+     * @return ArrayInput
+     */
+    protected function subCommandInput(string $commandName, array $input = []): ArrayInput
+    {
+        $arrayInput = new ArrayInput(array_merge(['command' => $commandName], $input));
+        $arrayInput->setInteractive($this->input->isInteractive());
+
+        return $arrayInput;
+    }
+
+    /**
+     * Get the application, or fail with an explanation.
+     *
+     * A command that was never added to an application cannot dispatch another
+     * one. getApplication() returns null there, and the bare call fataled on
+     * null with no indication of what was missing.
+     *
+     * @param string $method The calling method, named in the error.
+     * @return ConsoleApplication
+     * @throws RuntimeException If the command has no application.
+     */
+    protected function requireApplication(string $method): ConsoleApplication
+    {
+        $application = $this->getApplication();
+
+        if ($application === null) {
+            throw new RuntimeException(sprintf(
+                '%s() requires an application: %s is not registered with one. '
+                . 'Add it with addCommand() or withCommands() first.',
+                $method,
+                static::class
+            ));
+        }
+
+        return $application;
+    }
 }

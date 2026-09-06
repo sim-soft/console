@@ -36,8 +36,8 @@
     "php": "^8.2",
     "dragonmantank/cron-expression": "^3.4",
     "psr/container": "^2.0",
-    "symfony/console": "^7.2 || ^8.0",
-    "symfony/lock": "^7.2 || ^8.0"
+    "symfony/console": "^7.4 || ^8.0",
+    "symfony/lock": "^7.4 || ^8.0"
   },
   "require-dev": {
     "phpmd/phpmd": "^2.15",
@@ -57,6 +57,10 @@
   },
   "scripts": {
     "test": "phpunit",
+    "coverage": [
+      "phpunit --coverage-clover coverage.xml --coverage-text --only-summary-for-coverage-text",
+      "php tools/coverage-threshold.php coverage.xml 94"
+    ],
     "phpstan": "phpstan analyse --memory-limit=512M",
     "phpmd": "phpmd src text phpmd.xml",
     "check": [

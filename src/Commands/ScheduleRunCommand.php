@@ -2,10 +2,11 @@
 
 namespace Simsoft\Console\Commands;
 
+use RuntimeException;
+use Simsoft\Console\Application;
 use Simsoft\Console\Command;
 use Simsoft\Console\Schedule;
 use Simsoft\Console\Scheduler;
-use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\FlockStore;
@@ -24,6 +25,9 @@ class ScheduleRunCommand extends Command
     protected bool $messageTimeStamp = true;
 
     private ?LockFactory $lockFactory = null;
+
+    /** @var int Tasks that failed during this run. */
+    private int $failures = 0;
 
     /**
      * Constructor.
@@ -60,20 +64,55 @@ class ScheduleRunCommand extends Command
             return;
         }
 
+        $this->failures = 0;
+
         foreach ($dueSchedules as $schedule) {
-            // Conditional scheduling
-            if ($schedule->shouldSkip()) {
-                $desc = $schedule->getDescription() ?? $schedule->getCommandName();
-                $this->comment("Skipped (condition): $desc");
+            $description = $schedule->getDescription() ?? $schedule->getCommandName();
+
+            // Conditional scheduling. A when()/skip() callback is user code and
+            // may throw — it typically checks a database, a feature flag, or an
+            // API. Uncaught, that escaped the loop and aborted the entire run,
+            // so an unrelated task's condition stopped every remaining task.
+            // Failures are isolated per task everywhere else; this is no
+            // different, and a condition that cannot be evaluated is a failure
+            // rather than a reason to run the task blindly.
+            try {
+                $shouldSkip = $schedule->shouldSkip();
+            } catch (Throwable $ex) {
+                ++$this->failures;
+                $this->error("Failed [$description]: condition threw: {$ex->getMessage()}");
+                continue;
+            }
+
+            if ($shouldSkip) {
+                $this->comment("Skipped (condition): $description");
                 continue;
             }
 
             if ($schedule->isRunInBackground()) {
-                $this->runInBackground($schedule);
+                // A launch failure must not abort the remaining tasks, and must
+                // still be reported like any other failure.
+                try {
+                    $this->runInBackground($schedule);
+                } catch (Throwable $ex) {
+                    ++$this->failures;
+                    $this->error($ex->getMessage());
+                }
                 continue;
             }
 
             $this->runScheduledTask($schedule);
+        }
+
+        // Every task still ran — failures are isolated per task. But the run as a
+        // whole must not report success to cron when something failed, or a broken
+        // task stays invisible until someone reads the logs.
+        if ($this->failures > 0) {
+            throw new RuntimeException(sprintf(
+                '%d of %d scheduled task(s) failed.',
+                $this->failures,
+                count($dueSchedules)
+            ));
         }
     }
 
@@ -114,6 +153,16 @@ class ScheduleRunCommand extends Command
             // Execute with output capture
             $exitCode = $this->executeCommand($schedule);
 
+            // A command that throws inside handle() is caught by Command::execute(),
+            // which reports the message and returns FAILURE. Nothing propagates here,
+            // so a non-zero exit code is the only signal a task failed. Without this
+            // check the catch block below was dead for the ordinary case: onFailure
+            // never ran, the failure URL was never pinged, and the run reported
+            // success to cron.
+            if ($exitCode !== Command::SUCCESS) {
+                throw new RuntimeException("Command exited with code $exitCode.");
+            }
+
             // After hook
             $after = $schedule->getAfterCallback();
             if ($after) {
@@ -124,6 +173,8 @@ class ScheduleRunCommand extends Command
             $this->ping($schedule->getPingAfterUrl());
 
         } catch (Throwable $ex) {
+            ++$this->failures;
+
             $this->error("Failed [$description]: {$ex->getMessage()}");
 
             // Failure hook
@@ -150,11 +201,15 @@ class ScheduleRunCommand extends Command
         if ($schedule->getOutputPath()) {
             // Capture output to buffer, then write to file
             $bufferedOutput = new BufferedOutput();
-            $input = new ArrayInput(
-                array_merge(['command' => $schedule->getCommandName()], $schedule->getArguments())
+
+            // A scheduled task runs unattended by definition, so it must not
+            // prompt even when schedule:run was started from a terminal.
+            $input = Application::programmaticInput(
+                $schedule->getCommandName(),
+                $schedule->getArguments()
             );
 
-            $exitCode = $this->getApplication()->doRun($input, $bufferedOutput);
+            $exitCode = $this->requireApplication(__FUNCTION__)->doRun($input, $bufferedOutput);
 
             $content = $bufferedOutput->fetch();
 
@@ -171,7 +226,13 @@ class ScheduleRunCommand extends Command
             return $exitCode;
         }
 
-        return $this->call($schedule->getCommandName(), $schedule->getArguments());
+        // Not $this->call(), which inherits this command's interactivity: an
+        // operator running schedule:run by hand would make every task able to
+        // prompt, and the same task would then behave differently under cron.
+        return $this->requireApplication(__FUNCTION__)->doRun(
+            Application::programmaticInput($schedule->getCommandName(), $schedule->getArguments()),
+            $this->output
+        );
     }
 
     /**
@@ -187,8 +248,17 @@ class ScheduleRunCommand extends Command
 
         $command = $this->buildBackgroundCommand($schedule);
 
-        if (str_contains(PHP_OS, 'WIN')) {
-            pclose(popen("start /B $command", 'r'));
+        if (PHP_OS_FAMILY === 'Windows') {
+            $process = popen("start /B $command", 'r');
+
+            // popen() returns false if the process could not be started. Passing
+            // that straight to pclose() was a TypeError on top of an already
+            // failed launch, which buried the real problem.
+            if ($process === false) {
+                throw new RuntimeException("Unable to start background process for: $description");
+            }
+
+            pclose($process);
             return;
         }
 
@@ -203,16 +273,24 @@ class ScheduleRunCommand extends Command
      */
     private function buildBackgroundCommand(Schedule $schedule): string
     {
-        $php = PHP_BINARY;
-        $script = $_SERVER['argv'][0] ?? 'console';
-        $args = $schedule->getCommandName();
+        // Paths may contain spaces (e.g. C:\Program Files\php\php.exe).
+        $php = escapeshellarg(PHP_BINARY);
+        $script = escapeshellarg($this->scriptPath());
+        $args = escapeshellarg($schedule->getCommandName());
 
         foreach ($schedule->getArguments() as $key => $value) {
-            if (str_starts_with($key, '--')) {
-                $args .= " $key=" . escapeshellarg((string)$value);
-                continue;
+            // A multi-value option is an array in ArrayInput, and is legal here.
+            // Interpolating it produced the literal string "Array" behind an
+            // "Array to string conversion" warning, so the background task ran
+            // with an argument nobody wrote. Repeat the option instead, which is
+            // how the terminal would have passed it.
+            foreach (is_array($value) ? $value : [$value] as $item) {
+                $args .= ' ' . escapeshellarg(
+                    str_starts_with((string)$key, '--')
+                        ? $key . '=' . $this->stringifyArgument($item, (string)$key)
+                        : $this->stringifyArgument($item, (string)$key)
+                );
             }
-            $args .= ' ' . escapeshellarg((string)$value);
         }
 
         $output = '';
@@ -222,6 +300,54 @@ class ScheduleRunCommand extends Command
         }
 
         return trim("$php $script $args $output");
+    }
+
+    /**
+     * Get the entry script to re-invoke for a background task.
+     *
+     * @return string
+     */
+    private function scriptPath(): string
+    {
+        $argv = $_SERVER['argv'] ?? null;
+
+        // $_SERVER['argv'] is absent under some SAPIs and, when register_argc_argv
+        // is off, can be present as something other than a list. The old
+        // `$_SERVER['argv'][0] ?? 'console'` only covered the absent case: a
+        // string there indexed to its first character, so the background task was
+        // launched against a one-letter path that does not exist.
+        if (is_array($argv) && isset($argv[0]) && is_string($argv[0])) {
+            return $argv[0];
+        }
+
+        return 'console';
+    }
+
+    /**
+     * Render a scheduled argument as a shell argument.
+     *
+     * @param mixed $value
+     * @param string $key Named in the error.
+     * @return string
+     * @throws RuntimeException If the value has no faithful string form.
+     */
+    private function stringifyArgument(mixed $value, string $key): string
+    {
+        if (is_scalar($value)) {
+            // Booleans stringify to "1"/"" otherwise, and an empty argument is
+            // indistinguishable from an omitted one on the command line.
+            return is_bool($value) ? ($value ? 'true' : 'false') : (string)$value;
+        }
+
+        if ($value instanceof \Stringable) {
+            return (string)$value;
+        }
+
+        throw new RuntimeException(sprintf(
+            'Scheduled argument "%s" is %s, which cannot be passed to a background process.',
+            $key,
+            get_debug_type($value)
+        ));
     }
 
     /**

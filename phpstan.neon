@@ -1,38 +1,21 @@
 parameters:
-    level: 6
+    level: 9
     paths:
         - src
     excludePaths:
         - vendor
     ignoreErrors:
-        - '#Trait .+ is used zero times#'
-        - '#Unsafe usage of new static#'
-        - '#PHPDoc tag @method has invalid value#'
-        - '#no value type specified in iterable type#'
+        # These traits are public API, mixed in by applications that consume this
+        # package. Analysing src alone, PHPStan sees no `use` of them anywhere and
+        # reports them as dead. Scoped to the Traits directory so a genuinely
+        # unused trait elsewhere in src is still reported.
         -
-            message: '#Parameter \#1 .+ of function forward_static_call#'
-            reportUnmatched: false
+            identifier: trait.unused
+            path: src/Traits/*
+
+        # getLazyCommand() reflects on the constructor and throws when a subclass
+        # requires arguments, so the `new static()` below that guard cannot be
+        # reached with an incompatible signature. PHPStan does not follow it.
         -
-            message: '#Parameter \#1 \$command of method .+::addCommand\(\) expects#'
-            reportUnmatched: false
-        -
-            message: '#Cannot call method doRun\(\) on .+\|null#'
-            reportUnmatched: false
-        -
-            message: '#should return static\(.+\) but returns#'
-            reportUnmatched: false
-        -
-            message: '#Variable \$command in PHPDoc tag @var does not exist#'
-            reportUnmatched: false
-        -
-            message: '#does not accept .+HelperInterface#'
-            reportUnmatched: false
-        -
-            message: '#Argument of an invalid type array\|Countable#'
-            reportUnmatched: false
-        -
-            message: '#Cannot use -- on int\|null#'
-            reportUnmatched: false
-        -
-            message: '#Parameter \#1 \$handle of function pclose#'
-            reportUnmatched: false
+            identifier: new.static
+            path: src/Command.php

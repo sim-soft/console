@@ -10,10 +10,10 @@ use Symfony\Component\Console\Input\InputOption;
  * Requires confirmation before running destructive actions.
  * In production, requires --force flag unless user confirms interactively.
  *
- * @method addOption(string $name, string|array|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array|\Closure $suggestedValues = []): static
- * @method option(string $name, mixed $default = null): mixed
- * @method confirm(string $question, bool $default = false): bool
- * @method error(string $message): void
+ * @method static addOption(string $name, string|array<int, string>|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array<int|string, string>|\Closure $suggestedValues = [])
+ * @method mixed option(string $name, mixed $default = null)
+ * @method bool confirm(string $question, bool $default = false)
+ * @method void error(string $message)
  */
 trait ConfirmableAction
 {

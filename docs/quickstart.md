@@ -8,9 +8,11 @@ composer require simsoft/console
 
 ## Entry Script
 
-Create a `console` file in your project root:
+Create a `console` file in your project root. The `#!/usr/bin/env php` line goes
+above the `<?php` tag:
 
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";
@@ -26,6 +28,15 @@ $status = Application::make('My App', '1.0')
 
 exit($status);
 ```
+
+Make it executable so it can be run directly:
+
+```shell
+chmod +x console
+```
+
+On Windows this step does nothing and the shebang is ignored — run the examples
+below as `php console <command>` instead.
 
 ## Hello World
 
@@ -52,6 +63,17 @@ class HelloWorldCommand extends Command
 ## Run
 
 ```shell
-php console screen:welcome
-# Output: Hello World
+./console screen:welcome
+# [2024-03-15 10:30:00] Hello World
 ```
+
+Output is timestamped by default. To drop the prefix, set
+`protected bool $messageTimeStamp = false;` on the command — see
+[Writing Output](output.md#timestamps).
+
+## Next Steps
+
+- [Creating Commands](commands.md) — closure commands and error handling
+- [Console Input](input.md) — arguments and options
+- [Writing Output](output.md) — message types, timestamps, tables
+- [Useful Traits](traits.md) — dates, files, dry-run, retries, output formats

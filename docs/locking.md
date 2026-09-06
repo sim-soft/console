@@ -12,8 +12,8 @@ use Simsoft\Console\Command;
 
 class ImportCommand extends Command
 {
-    static string $name = 'data:import';
-    static string $description = 'Import data from external source';
+    public static string $name = 'data:import';
+    public static string $description = 'Import data from external source';
     protected bool $lockable = true;
 
     protected function handle(): void
@@ -26,3 +26,8 @@ class ImportCommand extends Command
 
 Set `$lockable = true` — the framework handles lock acquisition and release
 automatically.
+
+If the lock is already held by another process, the command does not wait: it
+prints a notice and exits with a success status, so a cron entry firing while a
+previous run is still going will not be reported as a failure. The lock is
+always released when the command finishes, including when `handle()` throws.

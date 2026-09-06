@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests;
 
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Simsoft\Console\Application;
 use Simsoft\Console\Command;
 use Symfony\Component\Console\Command\LazyCommand;
@@ -12,6 +13,7 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Fixtures\ArgumentCommand;
 use Tests\Fixtures\CallerCommand;
+use Tests\Fixtures\ConstructorDependencyCommand;
 use Tests\Fixtures\ExceptionCommand;
 use Tests\Fixtures\LockableCommand;
 use Tests\Fixtures\NoTimestampCommand;
@@ -105,6 +107,33 @@ class CommandTest extends TestCase
     {
         $lazy = SimpleCommand::getLazyCommand();
         $this->assertSame('A simple test command', $lazy->getDescription());
+    }
+
+    public function testGetLazyCommandRejectsCommandWithRequiredConstructorArguments(): void
+    {
+        // LazyCommand resolves via `new static()`. Without the guard this blew
+        // up later with an ArgumentCountError, at resolution time rather than
+        // at registration, and with no hint about the cause.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('cannot be lazy-loaded because its constructor requires 1 argument(s)');
+
+        ConstructorDependencyCommand::getLazyCommand();
+    }
+
+    public function testCommandWithConstructorArgumentsCanStillBeRegisteredEagerly(): void
+    {
+        $app = Application::make('Test', '1.0');
+        $app->setAutoExit(false);
+        $app->addCommand(new ConstructorDependencyCommand('injected value'));
+
+        $output = new BufferedOutput();
+        $status = $app->doRun(
+            new ArrayInput(['command' => 'test:constructor-dependency']),
+            $output
+        );
+
+        $this->assertSame(Command::SUCCESS, $status);
+        $this->assertStringContainsString('injected value', $output->fetch());
     }
 
     // --- Arguments and Options ---

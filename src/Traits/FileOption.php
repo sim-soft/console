@@ -2,13 +2,14 @@
 
 namespace Simsoft\Console\Traits;
 
+use InvalidArgumentException;
 use Symfony\Component\Console\Input\InputOption;
 
 /**
  * Trait FileOption
  *
- * @method addOption(string $name, string|array|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array|\Closure $suggestedValues = []): static
- * @method option(string $name, mixed $default = null): mixed
+ * @method static addOption(string $name, string|array<int, string>|null $shortcut = null, ?int $mode = null, string $description = '', mixed $default = null, array<int|string, string>|\Closure $suggestedValues = [])
+ * @method mixed option(string $name, mixed $default = null)
  */
 trait FileOption
 {
@@ -55,21 +56,59 @@ trait FileOption
     ): string|array|null
     {
         $file = $this->option($name, $default);
+
         if ($file === null) {
             return null;
         }
 
+        // The $default parameter is documented as string|string[], so an array
+        // can arrive here whenever the option was not supplied on the command
+        // line. It went straight into trim() and raised a TypeError from inside
+        // the trait, which read as a bug in this package rather than in the
+        // default the caller had passed. Joining it lets the one code path
+        // below handle both.
+        if (is_array($file)) {
+            $file = implode(',', array_map(strval(...), $file));
+        }
+
+        if (!is_string($file)) {
+            throw new InvalidArgumentException(sprintf(
+                'The --%s option must be a string, got %s.',
+                $name,
+                get_debug_type($file)
+            ));
+        }
+
         $file = trim($file, '\'"');
-        $fileExtension = $fileExtension ? ".$fileExtension" : null;
+        $suffix = $fileExtension === null || $fileExtension === '' ? '' : ".$fileExtension";
 
         if ($multiple) {
             $files = [];
-            foreach (explode(',', $file) as $file) {
-                $files[] = trim($file).$fileExtension;
+
+            foreach (explode(',', $file) as $entry) {
+                $entry = trim($entry);
+
+                // Skip empty entries rather than turning them into a filename.
+                // The extension was appended unconditionally, so '--file=a,,b'
+                // yielded a phantom '.xlsx' between the two real files, and
+                // '--file=' yielded a list containing a single '.xlsx'. The
+                // array_filter() that followed only dropped entries still empty
+                // afterwards, which the suffix guaranteed they were not — so
+                // the caller went looking for a file nobody had named.
+                if ($entry === '') {
+                    continue;
+                }
+
+                $files[] = $entry . $suffix;
             }
-            return array_filter($files);
+
+            return $files;
         }
 
-        return trim($file).$fileExtension;
+        $file = trim($file);
+
+        // Same reasoning in the single-file case: an empty value is no file,
+        // not a file called '.xlsx'.
+        return $file === '' ? null : $file . $suffix;
     }
 }

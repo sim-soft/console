@@ -101,4 +101,90 @@ class FileOptionTest extends TestCase
         $output = $this->runFileOption(['--file' => '/path/to/report.xlsx']);
         $this->assertStringContainsString('SINGLE:/path/to/report.xlsx', $output);
     }
+
+    // --- Empty entries must not become filenames ---
+
+    public function testEmptyValueDoesNotProduceAFileNamedAfterTheExtension(): void
+    {
+        // The extension was appended unconditionally and array_filter() kept
+        // the result because '.xlsx' is truthy, so an empty --file yielded a
+        // list containing one file nobody had named.
+        $output = $this->runFileOption(['--file' => '']);
+
+        $this->assertStringContainsString('MULTI_EXT:' . PHP_EOL, $output);
+        $this->assertStringNotContainsString('MULTI_EXT:.xlsx', $output);
+    }
+
+    public function testEmptyValueYieldsNoSingleFile(): void
+    {
+        $output = $this->runFileOption(['--file' => '']);
+
+        $this->assertStringContainsString('NULL', $output);
+        $this->assertStringNotContainsString('EXT:.csv', $output);
+    }
+
+    public function testEmptySegmentBetweenTwoFilesIsDropped(): void
+    {
+        // '--file=a,,b' used to yield a phantom '.xlsx' between the two files.
+        $output = $this->runFileOption(['--file' => 'a,,b']);
+
+        $this->assertStringContainsString('MULTI_EXT:a.xlsx|b.xlsx', $output);
+    }
+
+    public function testWhitespaceOnlySegmentsAreDropped(): void
+    {
+        $output = $this->runFileOption(['--file' => ' , ']);
+
+        $this->assertStringContainsString('MULTI_EXT:' . PHP_EOL, $output);
+        $this->assertStringNotContainsString('.xlsx', $output);
+    }
+
+    public function testTrailingCommaIsDropped(): void
+    {
+        $output = $this->runFileOption(['--file' => 'a.xlsx,b.xlsx,']);
+
+        $this->assertStringContainsString('MULTI:a.xlsx|b.xlsx', $output);
+    }
+
+    public function testNonStringValueIsRejectedWithAClearMessage(): void
+    {
+        // Rejected rather than reaching trim() and raising a TypeError from
+        // inside the trait. Booleans are not a documented input shape; arrays
+        // are, and are joined instead (see below).
+        $output = $this->runFileOption(['--file' => true]);
+
+        $this->assertStringContainsString('--file option must be a string', $output);
+    }
+
+    public function testArrayDefaultIsTreatedAsACommaSeparatedList(): void
+    {
+        // string[] is a documented shape for $default, so it can arrive here
+        // whenever the option is absent from the command line.
+        $command = new class extends \Simsoft\Console\Command {
+            use \Simsoft\Console\Traits\FileOption;
+
+            static string $name = 'test:file-array-default';
+            static string $description = 'Array default file option';
+
+            protected function init(): void
+            {
+                $this->addFileOption();
+            }
+
+            protected function handle(): void
+            {
+                $files = $this->fileOption('file', ['a', 'b'], true, 'xlsx');
+                $this->line('MULTI_EXT:' . implode('|', $files));
+            }
+        };
+
+        $app = Application::make('Test', '1.0');
+        $app->setAutoExit(false);
+        $app->addCommand($command);
+
+        $output = new BufferedOutput();
+        $app->doRun(new ArrayInput(['command' => 'test:file-array-default']), $output);
+
+        $this->assertStringContainsString('MULTI_EXT:a.xlsx|b.xlsx', $output->fetch());
+    }
 }

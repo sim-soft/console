@@ -18,16 +18,23 @@ for parsing and Symfony Lock for overlap prevention.
 ## Setup
 
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";
 
+use App\Commands\CacheCleanupCommand;
+use App\Commands\DataSyncCommand;
+use App\Commands\ReportGenerateCommand;
 use Simsoft\Console\Application;
 use Simsoft\Console\Scheduler;
-use Throwable;
 
 $status = Application::make('My App', '1.0')
-    ->withCommands([...])
+    ->withCommands([
+        DataSyncCommand::class,
+        ReportGenerateCommand::class,
+        CacheCleanupCommand::class,
+    ])
     ->withScheduler(function (Scheduler $scheduler) {
         $scheduler->command('data:sync')
             ->everyFiveMinutes()
@@ -43,17 +50,21 @@ $status = Application::make('My App', '1.0')
             ->daily()
             ->before(fn() => error_log('Cleanup starting'))
             ->after(fn(int $code) => error_log("Cleanup done: $code"))
-            ->onFailure(fn(Throwable $ex) => error_log("Cleanup failed: {$ex->getMessage()}"));
+            ->onFailure(fn(\Throwable $ex) => error_log("Cleanup failed: {$ex->getMessage()}"));
     })
     ->run();
 
 exit($status);
 ```
 
+A scheduled command must also be registered with `withCommands()` — the
+scheduler dispatches it by name through the same application, so a name that is
+not registered fails at run time rather than at registration.
+
 ## Cron Entry
 
 ```
-* * * * * cd /path/to/project && php console schedule:run >> /dev/null 2>&1
+* * * * * cd /path/to/project && ./console schedule:run >> /dev/null 2>&1
 ```
 
 ## Frequency Methods
@@ -79,6 +90,16 @@ exit($status);
 | `->weekdays()`            | `0 0 * * 1-5`     |
 | `->weekends()`            | `0 0 * * 0,6`     |
 | `->cron('5 4 * * 1')`     | Custom expression |
+
+Arguments are range-checked: minutes `0-59`, hours `0-23`, day of week `0-7`
+(both `0` and `7` mean Sunday), and day of month `1-31`. Anything outside those
+bounds throws `InvalidArgumentException` when the schedule is registered, rather
+than producing a cron expression that never fires.
+
+`cron()` validates its expression the same way, for the same reason: an invalid
+expression previously threw while `schedule:run` was working out which tasks
+were due, which aborted the run before any task executed. One typo took down the
+whole schedule, and the error named a cron field rather than the entry.
 
 ## Options & Hooks
 
@@ -114,6 +135,22 @@ $scheduler->command('data:sync')
     ->between('09:00', '17:00')
     ->unlessBetween('02:00', '04:00');
 ```
+
+Conditions accumulate rather than replace each other, so the chain above means
+what it reads as: every `when()` must pass, and any `skip()` skips the task.
+`environments()`, `between()`, and `unlessBetween()` are built on `when()` and
+`skip()`, so they combine with them and with each other.
+
+`between()` and `unlessBetween()` evaluate their window in the schedule's
+timezone, so `timezone()` may be called before or after them. A window whose end
+is earlier than its start is treated as crossing midnight — `between('22:00',
+'06:00')` matches the evening and the small hours, not the daytime in between.
+
+A condition that throws is treated as a failed task: it is reported, counted in
+the exit code, and the task it guards does not run. The remaining tasks still
+do. Conditions often reach for a database or an API, and an unavailable
+dependency should not silently run a task that was meant to be gated — nor stop
+every other task in the schedule.
 
 ## Output Capture
 
@@ -159,10 +196,21 @@ Activate: `touch storage/maintenance.php` or `export APP_MAINTENANCE=true`
 ## Built-in Commands
 
 ```shell
-php console schedule:run    # Run all due tasks
-php console schedule:list   # List all registered tasks
+./console schedule:run    # Run all due tasks
+./console schedule:list   # List all registered tasks
 ```
 
 **Fault isolation:** Each task runs independently. If one fails, the scheduler
 calls `onFailure`, pings the failure URL, releases the lock, and continues to
 the next task.
+
+A task counts as failed when it exits non-zero — which is what a command does
+when an exception escapes `handle()`. `after` runs only on success; `onFailure`
+receives the throwable.
+
+**Exit code:** `schedule:run` exits non-zero if any task failed, after running
+all of them, so cron and monitoring see the failure:
+
+```shell
+./console schedule:run || notify-on-call "scheduled tasks failed"
+```

@@ -9,14 +9,21 @@ Use any PSR-3 logger (Monolog, etc.) via the DI container.
 ## Setup
 
 ```shell
-composer require monolog/monolog
+composer require monolog/monolog php-di/php-di
 ```
 
+Monolog supplies the logger; PHP-DI is the PSR-11 container holding it. Neither
+ships with this package — see [Dependency
+Injection](container.md#choosing-a-container) if you already use a different
+container.
+
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";
 
+use App\Commands\ImportCommand;
 use DI\Container;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
@@ -33,7 +40,9 @@ $container = new Container([
 
 $status = Application::make('My App', '1.0')
     ->withContainer($container)
-    ->withCommands([...])
+    ->withCommands([
+        ImportCommand::class,
+    ])
     ->run();
 
 exit($status);

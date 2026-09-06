@@ -21,7 +21,7 @@ class Scheduler
      * Register a command to be scheduled.
      *
      * @param string $commandName
-     * @param array $arguments
+     * @param array<string, mixed> $arguments
      * @return Schedule
      */
     public function command(string $commandName, array $arguments = []): Schedule

@@ -4,8 +4,10 @@ namespace Simsoft\Console;
 
 use Closure;
 use Cron\CronExpression;
+use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use InvalidArgumentException;
 
 /**
  * Class Schedule
@@ -30,9 +32,11 @@ class Schedule
 
     protected ?Closure $onFailureCallback = null;
 
-    protected ?Closure $whenCallback = null;
+    /** @var Closure[] All must pass for the task to run. */
+    protected array $whenCallbacks = [];
 
-    protected ?Closure $skipCallback = null;
+    /** @var Closure[] Any one of these skips the task. */
+    protected array $skipCallbacks = [];
 
     protected ?string $outputPath = null;
 
@@ -50,10 +54,11 @@ class Schedule
      * Constructor.
      *
      * @param string $commandName The command to schedule.
-     * @param array $arguments Command arguments.
+     * @param array<string, mixed> $arguments Command arguments.
      */
     public function __construct(
         protected string $commandName,
+        /** @var array<string, mixed> */
         protected array  $arguments = [],
     )
     {
@@ -69,6 +74,16 @@ class Schedule
      */
     public function cron(string $expression): static
     {
+        // Validate at the call site. An invalid expression otherwise threw from
+        // isDue() while the scheduler was collecting due tasks, which aborted
+        // the whole run: one typo in one entry stopped every other task from
+        // running, and the error named a cron field rather than the schedule.
+        if (!CronExpression::isValidExpression($expression)) {
+            throw new InvalidArgumentException(
+                "Invalid cron expression for \"$this->commandName\": \"$expression\"."
+            );
+        }
+
         $this->expression = $expression;
         return $this;
     }
@@ -105,6 +120,7 @@ class Schedule
 
     public function hourlyAt(int $minute): static
     {
+        $this->assertInRange($minute, 0, 59, 'minute');
         return $this->cron("$minute * * * *");
     }
 
@@ -115,11 +131,15 @@ class Schedule
 
     public function dailyAt(int $hour, int $minute = 0): static
     {
+        $this->assertInRange($hour, 0, 23, 'hour');
+        $this->assertInRange($minute, 0, 59, 'minute');
         return $this->cron("$minute $hour * * *");
     }
 
     public function twiceDaily(int $firstHour = 1, int $secondHour = 13): static
     {
+        $this->assertInRange($firstHour, 0, 23, 'hour');
+        $this->assertInRange($secondHour, 0, 23, 'hour');
         return $this->cron("0 $firstHour,$secondHour * * *");
     }
 
@@ -130,6 +150,9 @@ class Schedule
 
     public function weeklyOn(int $dayOfWeek, int $hour = 0, int $minute = 0): static
     {
+        $this->assertInRange($dayOfWeek, 0, 7, 'day of week');
+        $this->assertInRange($hour, 0, 23, 'hour');
+        $this->assertInRange($minute, 0, 59, 'minute');
         return $this->cron("$minute $hour * * $dayOfWeek");
     }
 
@@ -140,6 +163,9 @@ class Schedule
 
     public function monthlyOn(int $dayOfMonth, int $hour = 0, int $minute = 0): static
     {
+        $this->assertInRange($dayOfMonth, 1, 31, 'day of month');
+        $this->assertInRange($hour, 0, 23, 'hour');
+        $this->assertInRange($minute, 0, 59, 'minute');
         return $this->cron("$minute $hour $dayOfMonth * *");
     }
 
@@ -161,6 +187,26 @@ class Schedule
     public function weekends(): static
     {
         return $this->cron('0 0 * * 0,6');
+    }
+
+    /**
+     * Guard a cron field value, so out-of-range input fails at the call site
+     * rather than later inside CronExpression when the task is evaluated.
+     *
+     * @param int $value The supplied value.
+     * @param int $min Lowest accepted value.
+     * @param int $max Highest accepted value.
+     * @param string $label Field name used in the error message.
+     * @return void
+     * @throws InvalidArgumentException When the value is out of range.
+     */
+    protected function assertInRange(int $value, int $min, int $max, string $label): void
+    {
+        if ($value < $min || $value > $max) {
+            throw new InvalidArgumentException(
+                "Invalid $label: $value. Expected a value between $min and $max."
+            );
+        }
     }
 
     // ─── Options ─────────────────────────────────────────────────────────
@@ -216,24 +262,32 @@ class Schedule
     /**
      * Only run when the callback returns true.
      *
+     * Conditions accumulate: every when() must pass. They previously
+     * overwrote each other, so in a chain only the last one was consulted and
+     * the earlier ones were silently dropped — `->environments('production')
+     * ->between('01:00', '04:00')` ran in every environment.
+     *
      * @param Closure|bool $callback
      * @return $this
      */
     public function when(Closure|bool $callback): static
     {
-        $this->whenCallback = is_bool($callback) ? fn() => $callback : $callback;
+        $this->whenCallbacks[] = is_bool($callback) ? fn() => $callback : $callback;
         return $this;
     }
 
     /**
      * Skip when the callback returns true.
      *
+     * Conditions accumulate: any one of them skips the task. See when() for
+     * why these are no longer overwritten.
+     *
      * @param Closure|bool $callback
      * @return $this
      */
     public function skip(Closure|bool $callback): static
     {
-        $this->skipCallback = is_bool($callback) ? fn() => $callback : $callback;
+        $this->skipCallbacks[] = is_bool($callback) ? fn() => $callback : $callback;
         return $this;
     }
 
@@ -253,24 +307,23 @@ class Schedule
     /**
      * Only run between the given times (24h format HH:MM).
      *
+     * Evaluated in the schedule's timezone when one is set via timezone(),
+     * otherwise in the server's local time.
+     *
      * @param string $startTime e.g. '09:00'
      * @param string $endTime e.g. '17:00'
      * @return $this
      */
     public function between(string $startTime, string $endTime): static
     {
-        return $this->when(function () use ($startTime, $endTime) {
-            $now = date('H:i');
-            if ($startTime <= $endTime) {
-                return $now >= $startTime && $now <= $endTime;
-            }
-            // Overnight range (e.g. '22:00' to '06:00')
-            return $now >= $startTime || $now <= $endTime;
-        });
+        return $this->when(fn() => $this->isNowBetween($startTime, $endTime));
     }
 
     /**
      * Skip if the current time is between the given times (24h format HH:MM).
+     *
+     * Evaluated in the schedule's timezone when one is set via timezone(),
+     * otherwise in the server's local time.
      *
      * @param string $startTime e.g. '23:00'
      * @param string $endTime e.g. '04:00'
@@ -278,13 +331,29 @@ class Schedule
      */
     public function unlessBetween(string $startTime, string $endTime): static
     {
-        return $this->skip(function () use ($startTime, $endTime) {
-            $now = date('H:i');
-            if ($startTime <= $endTime) {
-                return $now >= $startTime && $now <= $endTime;
-            }
-            return $now >= $startTime || $now <= $endTime;
-        });
+        return $this->skip(fn() => $this->isNowBetween($startTime, $endTime));
+    }
+
+    /**
+     * Check whether the current time falls inside the given window.
+     *
+     * The timezone is read when this runs rather than when the window is
+     * registered, so timezone() may be called before or after between().
+     *
+     * @param string $startTime Window start, format HH:MM.
+     * @param string $endTime Window end, format HH:MM.
+     * @return bool
+     */
+    protected function isNowBetween(string $startTime, string $endTime): bool
+    {
+        $now = (new DateTimeImmutable('now', $this->timezone))->format('H:i');
+
+        if ($startTime <= $endTime) {
+            return $now >= $startTime && $now <= $endTime;
+        }
+
+        // Overnight range (e.g. '22:00' to '06:00')
+        return $now >= $startTime || $now <= $endTime;
     }
 
     /**
@@ -426,12 +495,16 @@ class Schedule
      */
     public function shouldSkip(): bool
     {
-        if ($this->whenCallback && !($this->whenCallback)()) {
-            return true;
+        foreach ($this->whenCallbacks as $callback) {
+            if (!$callback()) {
+                return true;
+            }
         }
 
-        if ($this->skipCallback && ($this->skipCallback)()) {
-            return true;
+        foreach ($this->skipCallbacks as $callback) {
+            if ($callback()) {
+                return true;
+            }
         }
 
         return false;
@@ -444,6 +517,9 @@ class Schedule
         return $this->commandName;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getArguments(): array
     {
         return $this->arguments;
