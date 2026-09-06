@@ -3,10 +3,25 @@
 Accepts any PSR-11 container. Commands are resolved from it when available,
 otherwise instantiated directly.
 
+- [Choosing a Container](#choosing-a-container)
 - [Setup](#setup)
 - [Resolving Services Inside Commands](#resolving-services-inside-commands)
 - [Constructor Injection](#constructor-injection)
 - [Methods](#methods)
+
+## Choosing a Container
+
+This package depends on `psr/container` — the *interface* — and ships no
+container of its own, so pick any PSR-11 implementation. The examples below use
+[PHP-DI](https://php-di.org/), which you install separately:
+
+```shell
+composer require php-di/php-di
+```
+
+Any PSR-11 container works; only the construction lines change. The
+definition-array constructor shown below is PHP-DI's own API, not part of
+PSR-11.
 
 ## Setup
 

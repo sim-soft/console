@@ -22,12 +22,18 @@ for parsing and Symfony Lock for overlap prevention.
 declare(strict_types=1);
 require "vendor/autoload.php";
 
+use App\Commands\CacheCleanupCommand;
+use App\Commands\DataSyncCommand;
+use App\Commands\ReportGenerateCommand;
 use Simsoft\Console\Application;
 use Simsoft\Console\Scheduler;
-use Throwable;
 
 $status = Application::make('My App', '1.0')
-    ->withCommands([...])
+    ->withCommands([
+        DataSyncCommand::class,
+        ReportGenerateCommand::class,
+        CacheCleanupCommand::class,
+    ])
     ->withScheduler(function (Scheduler $scheduler) {
         $scheduler->command('data:sync')
             ->everyFiveMinutes()
@@ -43,12 +49,16 @@ $status = Application::make('My App', '1.0')
             ->daily()
             ->before(fn() => error_log('Cleanup starting'))
             ->after(fn(int $code) => error_log("Cleanup done: $code"))
-            ->onFailure(fn(Throwable $ex) => error_log("Cleanup failed: {$ex->getMessage()}"));
+            ->onFailure(fn(\Throwable $ex) => error_log("Cleanup failed: {$ex->getMessage()}"));
     })
     ->run();
 
 exit($status);
 ```
+
+A scheduled command must also be registered with `withCommands()` — the
+scheduler dispatches it by name through the same application, so a name that is
+not registered fails at run time rather than at registration.
 
 ## Cron Entry
 

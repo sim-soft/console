@@ -53,5 +53,16 @@ class HelloWorldCommand extends Command
 
 ```shell
 php console screen:welcome
-# Output: Hello World
+# [2024-03-15 10:30:00] Hello World
 ```
+
+Output is timestamped by default. To drop the prefix, set
+`protected bool $messageTimeStamp = false;` on the command — see
+[Writing Output](output.md#timestamps).
+
+## Next Steps
+
+- [Creating Commands](commands.md) — closure commands and error handling
+- [Console Input](input.md) — arguments and options
+- [Writing Output](output.md) — message types, timestamps, tables
+- [Useful Traits](traits.md) — dates, files, dry-run, retries, output formats

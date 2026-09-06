@@ -19,8 +19,8 @@ use Symfony\Component\Console\Input\InputOption;
 
 class GreetCommand extends Command
 {
-    static string $name = 'greet';
-    static string $description = 'Greet someone';
+    public static string $name = 'greet';
+    public static string $description = 'Greet someone';
 
     protected function init(): void
     {
@@ -52,7 +52,9 @@ class GreetCommand extends Command
 
 ```shell
 php console greet Alice --yell --times=3
-# Output: HELLO, MR ALICE! (×3)
+# [2024-03-15 10:30:00] HELLO, MR ALICE!
+# [2024-03-15 10:30:00] HELLO, MR ALICE!
+# [2024-03-15 10:30:00] HELLO, MR ALICE!
 ```
 
 ## Methods

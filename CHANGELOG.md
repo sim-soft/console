@@ -256,6 +256,25 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   has always rejected anything else, so this only moves the error to the call
   site — no working call changes
 
+### Documentation
+
+- Examples that could not run are corrected. The container and logging setups
+  fataled on `DI\Container` — PHP-DI is a separate install and was neither
+  required nor mentioned; two `withCommands([...])` blocks were a literal
+  parse error; and the `DateOption` example called `format()` on a value the
+  documented call returns as `null`
+- `ConfirmableAction` no longer documents the opposite of what it does. An
+  unset `APP_ENV` counts as production, so the guard prompts rather than
+  auto-proceeding
+- New `Environments` section in the traits guide covers where `APP_ENV` is
+  read from, the production fallback, that no `.env` file is loaded, and that
+  `Schedule::environments()` reads the value at registration rather than at
+  run time
+- `withDefaultCommand()` and the `$lazyLoad` argument to `withCommands()` are
+  documented
+- Sample output includes the timestamp prefix the default formatter actually
+  writes, and command property declarations are `public static` throughout
+
 ## [2.0.0] - 2026-05-28
 
 ### Changed

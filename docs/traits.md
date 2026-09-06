@@ -11,6 +11,7 @@ command class.
 - [RetryableTask](#retryabletask)
 - [ConfirmableAction](#confirmableaction)
 - [OutputFormat](#outputformat)
+- [Environments](#environments)
 
 ## DateRangeOption
 
@@ -24,8 +25,8 @@ class ReportCommand extends Command
 {
     use DateRangeOption;
 
-    static string $name = 'report:sales';
-    static string $description = 'Generate sales report';
+    public static string $name = 'report:sales';
+    public static string $description = 'Generate sales report';
 
     protected function init(): void
     {
@@ -63,8 +64,8 @@ class DailyReport extends Command
 {
     use DateOption;
 
-    static string $name = 'report:daily';
-    static string $description = 'Generate daily report';
+    public static string $name = 'report:daily';
+    public static string $description = 'Generate daily report';
 
     protected function init(): void
     {
@@ -73,23 +74,32 @@ class DailyReport extends Command
 
     protected function handle(): void
     {
-        // Optional (returns null if not provided)
-        $date = $this->dateOption();
-
-        // Required (throws if not provided)
-        $date = $this->dateOption(required: true);
-
-        // Default to today if not provided
+        // Default to today when --date is omitted, so the result is never null
         $date = $this->dateOption(defaultToday: true);
-
-        // Multiple formats — first match wins
-        $date = $this->dateOption(format: ['Y-m-d', 'd/m/Y', 'd-m-Y', 'Ymd']);
-
-        // Required + multi-format
-        $date = $this->dateOption(format: ['Y-m-d', 'd/m/Y'], required: true);
 
         $this->info('Report for: ' . $date->format('d M Y'));
     }
+}
+```
+
+The four call shapes, and what each returns when `--date` is absent:
+
+| Call                                     | Without `--date`                 |
+|------------------------------------------|----------------------------------|
+| `dateOption()`                            | `null` — check before using it   |
+| `dateOption(required: true)`              | Throws `InvalidArgumentException` |
+| `dateOption(defaultToday: true)`          | Today at midnight                |
+| `dateOption(format: ['Y-m-d', 'd/m/Y'])`  | `null`; first matching format wins |
+
+Only `defaultToday` and `required` guarantee a value. The plain form returns
+`null`, so guard it:
+
+```php
+$date = $this->dateOption();
+
+if ($date === null) {
+    $this->error('Pass --date=YYYY-MM-DD.');
+    return;
 }
 ```
 
@@ -122,8 +132,8 @@ class ProcessCommand extends Command
 {
     use FileOption;
 
-    static string $name = 'file:process';
-    static string $description = 'Process files';
+    public static string $name = 'file:process';
+    public static string $description = 'Process files';
 
     protected function init(): void
     {
@@ -162,8 +172,8 @@ class SetupCommand extends Command
 {
     use FileDirectory;
 
-    static string $name = 'app:setup';
-    static string $description = 'Setup application directories';
+    public static string $name = 'app:setup';
+    public static string $description = 'Setup application directories';
 
     protected function handle(): void
     {
@@ -186,8 +196,8 @@ class CleanupCommand extends Command
 {
     use DryRunOption;
 
-    static string $name = 'cache:cleanup';
-    static string $description = 'Delete expired cache files';
+    public static string $name = 'cache:cleanup';
+    public static string $description = 'Delete expired cache files';
 
     protected function init(): void
     {
@@ -252,8 +262,8 @@ class SyncCommand extends Command
 {
     use RetryableTask;
 
-    static string $name = 'api:sync';
-    static string $description = 'Sync data from external API';
+    public static string $name = 'api:sync';
+    public static string $description = 'Sync data from external API';
 
     protected function handle(): void
     {
@@ -294,6 +304,17 @@ Environment-aware confirmation guard. Unlike `$this->confirm()`:
 - Only prompts in production — auto-proceeds in dev/staging
 - Fails safely in non-interactive mode
 
+The environment comes from `APP_ENV`, and **an unset `APP_ENV` counts as
+production**: the guard asks rather than assuming a machine it has not been
+told about is safe. Set it in your shell or process manager to get the
+auto-proceed behaviour:
+
+```shell
+export APP_ENV=development
+```
+
+See [Environments](#environments) for where the value is read.
+
 ```php
 use Simsoft\Console\Command;
 use Simsoft\Console\Traits\ConfirmableAction;
@@ -302,8 +323,8 @@ class MigrateCommand extends Command
 {
     use ConfirmableAction;
 
-    static string $name = 'db:migrate';
-    static string $description = 'Run database migrations';
+    public static string $name = 'db:migrate';
+    public static string $description = 'Run database migrations';
 
     protected function init(): void
     {
@@ -322,9 +343,20 @@ class MigrateCommand extends Command
 ```
 
 ```shell
-php console db:migrate --force    # Production: bypasses prompt
-php console db:migrate            # Development: proceeds without asking
+php console db:migrate --force              # Any environment: bypasses the prompt
+APP_ENV=development php console db:migrate  # Proceeds without asking
+APP_ENV=production php console db:migrate   # Prompts; cancels if declined
+php console db:migrate                      # APP_ENV unset — treated as production
 ```
+
+Under `--no-interaction` (cron, CI) the prompt cannot be answered, so a
+production run without `--force` is **cancelled** rather than proceeding. This
+is deliberate: unattended destructive commands should require `--force`
+explicitly. `confirmToProceed()` returns `false` there, so return early on it
+as the example above does.
+
+An explicit second argument overrides detection entirely, which is useful in
+tests: `confirmToProceed('...', env: 'development')`.
 
 ## OutputFormat
 
@@ -338,8 +370,8 @@ class UsersCommand extends Command
 {
     use OutputFormat;
 
-    static string $name = 'users:list';
-    static string $description = 'List all users';
+    public static string $name = 'users:list';
+    public static string $description = 'List all users';
 
     protected function init(): void
     {
@@ -374,3 +406,40 @@ so a typo in a pipeline fails instead of feeding it the wrong shape.
 `--format=json` fails if the data cannot be encoded. The usual cause is a
 string that is not valid UTF-8, such as a database column stored in another
 encoding; convert it with `mb_convert_encoding()` before passing it in.
+
+## Environments
+
+Two features branch on the environment, and both read it the same way:
+`getenv('APP_ENV')`, falling back to `'production'` when it is not set.
+
+| Feature                                  | Behaviour                                |
+|------------------------------------------|------------------------------------------|
+| `confirmToProceed()` (ConfirmableAction)  | Prompts in production, proceeds elsewhere |
+| `Schedule::environments()`                | Task runs only in the environments listed |
+
+This package does not read `.env` files — nothing here loads one. Set the
+variable in the environment itself:
+
+```shell
+# Shell, or a systemd unit / Docker env / CI secret
+export APP_ENV=development
+```
+
+Or from the entry script, before the application is built, if you already load
+configuration another way:
+
+```php
+putenv('APP_ENV=' . ($config['env'] ?? 'production'));
+```
+
+Under cron the shell profile is usually not read, so `APP_ENV` is unset unless
+the crontab sets it — which is exactly when defaulting to production matters:
+
+```
+APP_ENV=production
+* * * * * cd /path/to/project && php console schedule:run >> /dev/null 2>&1
+```
+
+`Schedule::environments()` reads the value **when the schedule is registered**,
+not when the task runs, so changing `APP_ENV` inside a `withScheduler()`
+callback has no effect on entries already registered.

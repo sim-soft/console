@@ -12,8 +12,8 @@ use Simsoft\Console\Command;
 
 class ImportCommand extends Command
 {
-    static string $name = 'data:import';
-    static string $description = 'Import data from external source';
+    public static string $name = 'data:import';
+    public static string $description = 'Import data from external source';
     protected bool $lockable = true;
 
     protected function handle(): void

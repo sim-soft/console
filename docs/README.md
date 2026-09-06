@@ -53,8 +53,11 @@ class HelloWorldCommand extends Command
 
 ```shell
 php console screen:welcome
-# Output: Hello World
+# [2024-03-15 10:30:00] Hello World
 ```
+
+Output is timestamped by default; set `protected bool $messageTimeStamp = false;`
+on a command to turn the prefix off.
 
 ## Requirements
 
