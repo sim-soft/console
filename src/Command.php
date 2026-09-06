@@ -669,7 +669,7 @@ abstract class Command extends ConsoleCommand
     public function call(string $commandName, array $input = []): int
     {
         return $this->requireApplication(__FUNCTION__)->doRun(
-            new ArrayInput(array_merge(['command' => $commandName], $input)),
+            $this->subCommandInput($commandName, $input),
             $this->output
         );
     }
@@ -689,12 +689,36 @@ abstract class Command extends ConsoleCommand
 
         try {
             return $this->requireApplication(__FUNCTION__)->doRun(
-                new ArrayInput(array_merge(['command' => $commandName], $input)),
+                $this->subCommandInput($commandName, $input),
                 $this->output
             );
         } finally {
             $this->output->setVerbosity($verbosity);
         }
+    }
+
+    /**
+     * Build input for a command dispatched from this one.
+     *
+     * A fresh ArrayInput is interactive by default, so a command run with
+     * --no-interaction dispatched a sub-command that could prompt anyway: the
+     * flag stopped at the first command. Under cron or a supervised worker the
+     * sub-command then blocked on stdin with nothing to answer it.
+     *
+     * Interactivity is inherited rather than forced off, because unlike the
+     * static Application::call() this may legitimately be running at a
+     * terminal, where a sub-command should still be able to ask.
+     *
+     * @param string $commandName
+     * @param array<string, mixed> $input
+     * @return ArrayInput
+     */
+    protected function subCommandInput(string $commandName, array $input = []): ArrayInput
+    {
+        $arrayInput = new ArrayInput(array_merge(['command' => $commandName], $input));
+        $arrayInput->setInteractive($this->input->isInteractive());
+
+        return $arrayInput;
     }
 
     /**

@@ -219,7 +219,7 @@ class Application extends ConsoleApplication
 
         try {
             return static::getApplication()->doRun(
-                new ArrayInput(array_merge(['command' => $commandName], $input)),
+                static::programmaticInput($commandName, $input),
                 $output,
             );
 
@@ -234,6 +234,30 @@ class Application extends ConsoleApplication
         }
 
         return ConsoleCommand::FAILURE;
+    }
+
+    /**
+     * Build input for a command invoked from code rather than a terminal.
+     *
+     * Nothing is at the keyboard here, so nothing may prompt. Symfony asks for
+     * confirmation when an unknown command name has exactly one close match
+     * ('Do you want to run "deploy:run" instead?'), and a command is free to
+     * prompt in its own right. Either blocked on stdin forever wherever the
+     * stream stays open — a container, a supervised worker, some CI runners —
+     * with the process still looking healthy to monitoring. Where stdin was
+     * closed it happened to return, which is why this survived: it fails only
+     * in the environments least likely to be watched.
+     *
+     * @param string $commandName
+     * @param array<string, mixed> $input
+     * @return ArrayInput
+     */
+    public static function programmaticInput(string $commandName, array $input = []): ArrayInput
+    {
+        $arrayInput = new ArrayInput(array_merge(['command' => $commandName], $input));
+        $arrayInput->setInteractive(false);
+
+        return $arrayInput;
     }
 
     /**

@@ -3,10 +3,10 @@
 namespace Simsoft\Console\Commands;
 
 use RuntimeException;
+use Simsoft\Console\Application;
 use Simsoft\Console\Command;
 use Simsoft\Console\Schedule;
 use Simsoft\Console\Scheduler;
-use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\Store\FlockStore;
@@ -186,8 +186,12 @@ class ScheduleRunCommand extends Command
         if ($schedule->getOutputPath()) {
             // Capture output to buffer, then write to file
             $bufferedOutput = new BufferedOutput();
-            $input = new ArrayInput(
-                array_merge(['command' => $schedule->getCommandName()], $schedule->getArguments())
+
+            // A scheduled task runs unattended by definition, so it must not
+            // prompt even when schedule:run was started from a terminal.
+            $input = Application::programmaticInput(
+                $schedule->getCommandName(),
+                $schedule->getArguments()
             );
 
             $exitCode = $this->requireApplication(__FUNCTION__)->doRun($input, $bufferedOutput);
@@ -207,7 +211,13 @@ class ScheduleRunCommand extends Command
             return $exitCode;
         }
 
-        return $this->call($schedule->getCommandName(), $schedule->getArguments());
+        // Not $this->call(), which inherits this command's interactivity: an
+        // operator running schedule:run by hand would make every task able to
+        // prompt, and the same task would then behave differently under cron.
+        return $this->requireApplication(__FUNCTION__)->doRun(
+            Application::programmaticInput($schedule->getCommandName(), $schedule->getArguments()),
+            $this->output
+        );
     }
 
     /**

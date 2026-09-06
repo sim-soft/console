@@ -77,6 +77,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cannot be launched, instead of passing it to `pclose()` and raising a
   `TypeError` on top of an already failed launch. The launch failure is counted
   and reported like any other task failure, leaving the remaining tasks to run
+- A command invoked from code can no longer block forever on a prompt.
+  `Application::call()` built interactive input, so an unknown command name
+  with exactly one close match reached Symfony's `Do you want to run "x"
+  instead?` confirmation and waited on stdin — in a container, a supervised
+  worker, or CI, where the stream stays open and nothing answers, that never
+  returned, with the process still looking healthy to monitoring. Scheduled
+  tasks ran interactive for the same reason, so a task that prompts stalled
+  cron indefinitely. Both now run non-interactively
+- `Command::call()` and `callSilently()` inherit the calling command's
+  interactivity instead of resetting it. A command run with `--no-interaction`
+  dispatched a sub-command that could still prompt: the flag stopped at the
+  first command. At a terminal a sub-command may still ask, so this is
+  inherited rather than forced off
 - Background scheduled tasks pass array-valued arguments correctly. A
   multi-value option — legal in `ArrayInput` — was interpolated into the shell
   command as the literal string `Array`, behind an "Array to string conversion"
@@ -106,6 +119,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scheduler, and all — with the static `call()` API
 - `Application::flushGlobal()` drops the shared and auto-built instances, for
   tests and long-running workers where static state would otherwise leak
+- `Application::programmaticInput()` builds non-interactive input for a command
+  invoked from code, for callers dispatching commands by hand
 - CI now runs PHPStan and PHPMD alongside the test suite, in a separate job, so
   the pipeline covers everything `composer check` runs locally
 - Test coverage for `ScheduleRunCommand` and `ScheduleListCommand`, which had
@@ -149,6 +164,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nullable types and `mixed` are both checked. The findings were missing
   validation rather than missing annotations, and were fixed as such; see the
   guards listed under Fixed
+- **Behavior:** commands invoked through `Application::call()`, and scheduled
+  tasks, run non-interactively. A command that prompts through them now takes
+  its default instead of asking. This is the only behavior a caller with no
+  terminal could rely on: previously it hung
 - **Behavior:** `choice()` declares `$defaultIndex` as
   `bool|float|int|string|null` rather than `mixed`. Symfony's `ChoiceQuestion`
   has always rejected anything else, so this only moves the error to the call
