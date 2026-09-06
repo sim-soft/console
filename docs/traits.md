@@ -42,8 +42,8 @@ class ReportCommand extends Command
 ```
 
 ```shell
-php console report:sales --month=2024-03
-php console report:sales --from-date=2024-03-01 --to-date=2024-03-31
+./console report:sales --month=2024-03
+./console report:sales --from-date=2024-03-01 --to-date=2024-03-31
 ```
 
 Both boundaries are midnight on the day given, so the range depends only on the
@@ -104,10 +104,10 @@ if ($date === null) {
 ```
 
 ```shell
-php console report:daily --date=2024-06-15    # Y-m-d
-php console report:daily --date=15/06/2024    # d/m/Y (if format array includes it)
-php console report:daily --date=20240615      # Ymd (if format array includes it)
-php console report:daily                      # Uses today if defaultToday: true
+./console report:daily --date=2024-06-15    # Y-m-d
+./console report:daily --date=15/06/2024    # d/m/Y (if format array includes it)
+./console report:daily --date=20240615      # Ymd (if format array includes it)
+./console report:daily                      # Uses today if defaultToday: true
 ```
 
 Formats are tried in order — put the most common format first to avoid
@@ -151,8 +151,8 @@ class ProcessCommand extends Command
 ```
 
 ```shell
-php console file:process --file=report.xlsx
-php console file:process --file="a.xlsx,b.xlsx,c.xlsx"
+./console file:process --file=report.xlsx
+./console file:process --file="a.xlsx,b.xlsx,c.xlsx"
 ```
 
 Empty entries are dropped rather than turned into a filename: `--file=a,,b`
@@ -223,7 +223,7 @@ class CleanupCommand extends Command
 ```
 
 ```shell
-php console cache:cleanup --dry-run
+./console cache:cleanup --dry-run
 # [DRY RUN] Delete /tmp/cache/abc.tmp
 # No changes made.
 ```
@@ -343,10 +343,10 @@ class MigrateCommand extends Command
 ```
 
 ```shell
-php console db:migrate --force              # Any environment: bypasses the prompt
-APP_ENV=development php console db:migrate  # Proceeds without asking
-APP_ENV=production php console db:migrate   # Prompts; cancels if declined
-php console db:migrate                      # APP_ENV unset — treated as production
+./console db:migrate --force              # Any environment: bypasses the prompt
+APP_ENV=development ./console db:migrate  # Proceeds without asking
+APP_ENV=production ./console db:migrate   # Prompts; cancels if declined
+./console db:migrate                      # APP_ENV unset — treated as production
 ```
 
 Under `--no-interaction` (cron, CI) the prompt cannot be answered, so a
@@ -391,9 +391,9 @@ class UsersCommand extends Command
 ```
 
 ```shell
-php console users:list                  # Table (default)
-php console users:list --format=json    # JSON array
-php console users:list --format=csv     # CSV with headers
+./console users:list                  # Table (default)
+./console users:list --format=json    # JSON array
+./console users:list --format=csv     # CSV with headers
 ```
 
 Rows may be lists or associative arrays. A list is keyed by the headers you
@@ -437,7 +437,7 @@ the crontab sets it — which is exactly when defaulting to production matters:
 
 ```
 APP_ENV=production
-* * * * * cd /path/to/project && php console schedule:run >> /dev/null 2>&1
+* * * * * cd /path/to/project && ./console schedule:run >> /dev/null 2>&1
 ```
 
 `Schedule::environments()` reads the value **when the schedule is registered**,

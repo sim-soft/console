@@ -18,6 +18,7 @@ Injection](container.md#choosing-a-container) if you already use a different
 container.
 
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";

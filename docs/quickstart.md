@@ -8,9 +8,11 @@ composer require simsoft/console
 
 ## Entry Script
 
-Create a `console` file in your project root:
+Create a `console` file in your project root. The `#!/usr/bin/env php` line goes
+above the `<?php` tag:
 
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";
@@ -26,6 +28,15 @@ $status = Application::make('My App', '1.0')
 
 exit($status);
 ```
+
+Make it executable so it can be run directly:
+
+```shell
+chmod +x console
+```
+
+On Windows this step does nothing and the shebang is ignored — run the examples
+below as `php console <command>` instead.
 
 ## Hello World
 
@@ -52,7 +63,7 @@ class HelloWorldCommand extends Command
 ## Run
 
 ```shell
-php console screen:welcome
+./console screen:welcome
 # [2024-03-15 10:30:00] Hello World
 ```
 

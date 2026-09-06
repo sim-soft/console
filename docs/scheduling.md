@@ -18,6 +18,7 @@ for parsing and Symfony Lock for overlap prevention.
 ## Setup
 
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";
@@ -63,7 +64,7 @@ not registered fails at run time rather than at registration.
 ## Cron Entry
 
 ```
-* * * * * cd /path/to/project && php console schedule:run >> /dev/null 2>&1
+* * * * * cd /path/to/project && ./console schedule:run >> /dev/null 2>&1
 ```
 
 ## Frequency Methods
@@ -195,8 +196,8 @@ Activate: `touch storage/maintenance.php` or `export APP_MAINTENANCE=true`
 ## Built-in Commands
 
 ```shell
-php console schedule:run    # Run all due tasks
-php console schedule:list   # List all registered tasks
+./console schedule:run    # Run all due tasks
+./console schedule:list   # List all registered tasks
 ```
 
 **Fault isolation:** Each task runs independently. If one fails, the scheduler
@@ -211,5 +212,5 @@ receives the throwable.
 all of them, so cron and monitoring see the failure:
 
 ```shell
-php console schedule:run || notify-on-call "scheduled tasks failed"
+./console schedule:run || notify-on-call "scheduled tasks failed"
 ```

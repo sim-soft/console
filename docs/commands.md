@@ -38,6 +38,7 @@ class HelloWorldCommand extends Command
 ## Closure Commands
 
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";
@@ -68,7 +69,7 @@ exit($status);
 ```
 
 ```shell
-php console greet:user Alice --age=30
+./console greet:user Alice --age=30
 # [2024-03-15 10:30:00] Hello, Alice! You are 30 years old.
 ```
 
@@ -103,11 +104,11 @@ Application::make('My App', '1.0')
 ```
 
 ```shell
-php console                 # Runs screen:welcome
-php console screen:welcome  # Same thing, named explicitly
+./console                 # Runs screen:welcome
+./console screen:welcome  # Same thing, named explicitly
 ```
 
-Useful for single-purpose scripts. Without it, a bare `php console` lists the
+Useful for single-purpose scripts. Without it, a bare `./console` lists the
 available commands.
 
 ## Error Handling
@@ -122,8 +123,8 @@ An exception escaping `handle()` is caught, reported, and turned into a
 | `-vv`      | Adds the full stack trace for each                          |
 
 ```shell
-php console data:sync        # Connection refused
-php console data:sync -vv    # ...with class, origin, cause, and trace
+./console data:sync        # Connection refused
+./console data:sync -vv    # ...with class, origin, cause, and trace
 ```
 
 Ordinary runs stay readable, and the detail needed to debug a failure is one

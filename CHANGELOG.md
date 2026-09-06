@@ -274,6 +274,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   documented
 - Sample output includes the timestamp prefix the default formatter actually
   writes, and command property declarations are `public static` throughout
+- Entry scripts carry a `#!/usr/bin/env php` shebang and the quickstart adds
+  the `chmod +x console` step that makes it effective; shell examples invoke
+  `./console`, with the `php console` fallback noted for Windows
 
 ## [2.0.0] - 2026-05-28
 

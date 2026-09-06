@@ -15,6 +15,7 @@
 ## Quick Example
 
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";
@@ -52,9 +53,13 @@ class HelloWorldCommand extends Command
 ```
 
 ```shell
-php console screen:welcome
+chmod +x console
+./console screen:welcome
 # [2024-03-15 10:30:00] Hello World
 ```
+
+The shebang plus `chmod +x` is what makes `./console` work; on Windows the line
+is ignored, so run `php console screen:welcome` instead.
 
 Output is timestamped by default; set `protected bool $messageTimeStamp = false;`
 on a command to turn the prefix off.

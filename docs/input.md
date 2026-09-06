@@ -51,7 +51,7 @@ class GreetCommand extends Command
 ```
 
 ```shell
-php console greet Alice --yell --times=3
+./console greet Alice --yell --times=3
 # [2024-03-15 10:30:00] HELLO, MR ALICE!
 # [2024-03-15 10:30:00] HELLO, MR ALICE!
 # [2024-03-15 10:30:00] HELLO, MR ALICE!
