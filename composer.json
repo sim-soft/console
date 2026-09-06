@@ -57,6 +57,10 @@
   },
   "scripts": {
     "test": "phpunit",
+    "coverage": [
+      "phpunit --coverage-clover coverage.xml --coverage-text --only-summary-for-coverage-text",
+      "php tools/coverage-threshold.php coverage.xml 94"
+    ],
     "phpstan": "phpstan analyse --memory-limit=512M",
     "phpmd": "phpmd src text phpmd.xml",
     "check": [

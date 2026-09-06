@@ -128,6 +128,40 @@ php console screen:welcome
 | **Maintenance mode**       | ✅                                 | ❌                   | ✅                | ❌               |
 | **Reusable traits**        | ✅ 8 traits                        | ❌                   | ❌                | ❌               |
 
+## Development
+
+```shell
+composer test      # PHPUnit
+composer phpstan   # Static analysis, level 9
+composer phpmd     # Mess detection
+composer check     # All three, as CI runs them
+composer coverage  # Coverage report + 94% floor
+```
+
+`composer coverage` needs a coverage driver. If `composer test` prints
+"No code coverage driver available", install one:
+
+```shell
+pecl install pcov          # then enable it in php.ini
+```
+
+Or run it in a container without touching your local PHP. The `php` images
+carry no composer, so this calls the binaries directly:
+
+```shell
+docker run --rm -v "$PWD":/app -w /app php:8.4-cli sh -c \
+  'pecl install pcov && docker-php-ext-enable pcov &&
+   vendor/bin/phpunit --coverage-clover coverage.xml --coverage-text --only-summary-for-coverage-text &&
+   php tools/coverage-threshold.php coverage.xml 94'
+```
+
+Match the image tag to the PHP version `vendor/` was installed with, or
+Composer's platform check rejects it. On Git Bash, prefix with
+`MSYS_NO_PATHCONV=1` so the container paths are not rewritten.
+
+CI enforces the floor on every push, so a drop fails the build rather than
+going unnoticed.
+
 ## License
 
 MIT — See [LICENSE](LICENSE) for details.

@@ -33,6 +33,45 @@ jobs:
       - name: Run tests
         run: vendor/bin/phpunit --no-coverage
 
+  coverage:
+    runs-on: ubuntu-latest
+
+    name: Coverage
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Coverage is runtime-independent, so it runs once rather than across the
+      # matrix. pcov rather than xdebug: it is several times faster and this
+      # only needs line coverage.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring
+          coverage: pcov
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run tests with coverage
+        run: vendor/bin/phpunit --coverage-clover coverage.xml --coverage-text --only-summary-for-coverage-text
+
+      # PHPUnit reports coverage but cannot fail on it, so without this the job
+      # would stay green while coverage fell. The floor sits just under the
+      # current figure: it catches a real drop without failing the build over
+      # rounding. Raise it as coverage improves.
+      - name: Enforce coverage floor
+        run: php tools/coverage-threshold.php coverage.xml 94
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-clover
+          path: coverage.xml
+          if-no-files-found: error
+
   quality:
     runs-on: ubuntu-latest
 

@@ -126,6 +126,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Test coverage for `ScheduleRunCommand` and `ScheduleListCommand`, which had
   none — hook dispatch, failure reporting, fault isolation, output capture, and
   listing
+- CI measures line coverage with pcov and fails below a 94% floor. PHPUnit
+  reports coverage but cannot fail on it, so `tools/coverage-threshold.php`
+  reads the Clover report and exits non-zero under the floor; the report is
+  uploaded as a build artifact. `composer coverage` runs the same check
+  locally
+- Coverage for `tree()`, `createProgressIndicator()` and `secret()`, three
+  documented methods that no test exercised, and for the stderr rendering
+  contract of `Application::call()`
 
 ### Changed
 
