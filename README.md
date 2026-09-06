@@ -9,8 +9,8 @@ commands with less boilerplate.
 ## Requirements
 
 - PHP 8.2+
-- Symfony Console ^7.2 || ^8.0
-- Symfony Lock ^7.2 || ^8.0
+- Symfony Console ^7.4 || ^8.0
+- Symfony Lock ^7.4 || ^8.0
 - dragonmantank/cron-expression ^3.4
 - psr/container ^2.0
 
