@@ -8,7 +8,7 @@ commands with less boilerplate.
 [![Tests](https://github.com/sim-soft/console/actions/workflows/tests.yml/badge.svg)](https://github.com/sim-soft/console/actions/workflows/tests.yml)
 [![PHPStan](https://img.shields.io/badge/PHPStan-level%209-brightgreen.svg)](https://phpstan.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-online-green.svg)](https://sim-soft.github.io/console/)
+[![Documentation](https://img.shields.io/badge/Docs-online-green.svg)](https://sim-soft.github.io/console/)
 
 ## Requirements
 
