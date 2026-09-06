@@ -218,6 +218,26 @@ php console cache:cleanup --dry-run
 # No changes made.
 ```
 
+Renaming the flag is enough — `isDryRun()` and `unlessDryRun()` both use the
+name you registered:
+
+```php
+protected function init(): void
+{
+    $this->addDryRunOption(name: 'simulate');
+}
+
+protected function handle(): void
+{
+    $this->unlessDryRun('Delete file', fn() => unlink($file));  // reads --simulate
+}
+```
+
+Pass a name explicitly — `isDryRun('simulate')`, or the third argument to
+`unlessDryRun()` — only when a command registers more than one such flag; the
+last one registered is the default. Calling either without registering the
+option is a `LogicException` naming the missing option and the fix.
+
 ## RetryableTask
 
 Retry flaky operations with configurable attempts, delay, and exponential

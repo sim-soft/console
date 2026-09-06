@@ -159,6 +159,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rather than raising a `TypeError` from `trim()` inside the trait, and an
   array — a documented shape for `$default` — is read as a comma-separated list
   instead of failing the same way
+- `DryRunOption` works with a renamed flag. `isDryRun()` defaulted to the
+  literal `'dry-run'` regardless of what `addDryRunOption()` had registered, so
+  `addDryRunOption(name: 'simulate')` combined with `unlessDryRun()` — which
+  calls `isDryRun()` with no argument — threw `The "dry-run" option does not
+  exist`, naming an option the command did not have and sending people hunting
+  for a typo they had not made. The registered name is now remembered and used
+  by default; an explicit name still overrides it. Using either method without
+  registering the option raises a `LogicException` that names the option and
+  the call that was missing, rather than only reporting its absence
 
 ### Added
 
@@ -234,6 +243,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   boundary carrying the current time — usually an inclusive `--to-date` that
   worked only because reports ran in the evening — should compare against
   `$toDate->modify('+1 day')` instead
+- **Behavior:** `isDryRun()` and `unlessDryRun()` default to the name passed to
+  `addDryRunOption()` rather than the literal `'dry-run'`. A command that
+  registered one name and queried another — previously an error — now reads the
+  registered flag. `unlessDryRun()` takes an optional third argument for
+  commands carrying more than one such flag
 - **Behavior:** `fileOption()` returns `null` for an empty single-file value
   and omits empty entries from the multiple-file list, rather than returning a
   name consisting of the extension alone
