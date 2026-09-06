@@ -342,3 +342,25 @@ Procfile          text
 
 # Ignore files (like .npmignore or .gitignore)
 *.*ignore         text
+
+######################################################################
+# Keep development files out of the distributed package.
+#
+# Composer installs from a git archive, so without these every consumer
+# downloads the test suite, the docs site, CI config and editor files —
+# 101 files where 16 are needed. Nothing below is referenced by the
+# autoloader or by any shipped class; the docs remain online and in the
+# repository, which is where people read them.
+######################################################################
+
+/.github/         export-ignore
+/.kiro/           export-ignore
+/docs/            export-ignore
+/example/         export-ignore
+/tests/           export-ignore
+/tools/           export-ignore
+/.editorconfig    export-ignore
+/console.code-workspace export-ignore
+/phpmd.xml        export-ignore
+/phpstan.neon     export-ignore
+/phpunit.xml      export-ignore
