@@ -326,3 +326,14 @@ php console users:list                  # Table (default)
 php console users:list --format=json    # JSON array
 php console users:list --format=csv     # CSV with headers
 ```
+
+Rows may be lists or associative arrays. A list is keyed by the headers you
+passed; an associative row is written through as-is, so its own keys win.
+
+Each row must be an array, and only `table`, `json`, and `csv` are accepted —
+an unrecognised format is an error rather than a silent fall back to the table,
+so a typo in a pipeline fails instead of feeding it the wrong shape.
+
+`--format=json` fails if the data cannot be encoded. The usual cause is a
+string that is not valid UTF-8, such as a database column stored in another
+encoding; convert it with `mb_convert_encoding()` before passing it in.

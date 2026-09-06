@@ -108,6 +108,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   array|string, null returned" — which named the method but not the reason it
   had nothing to return. This is the common shape of the bug: a command written
   against a terminal, later run from cron or a test
+- `OutputFormat` reports a failed JSON export instead of printing a blank line.
+  `json_encode()` returns false rather than throwing, and `writeln()` cast that
+  to an empty string, so `--format=json` over a row containing invalid UTF-8 —
+  typically a database column in another encoding — wrote one empty line and
+  exited `0`. Anything consuming the output read that as "no rows" rather than
+  "the export failed"
+- `OutputFormat` rejects an unrecognised `--format` instead of falling back to
+  the table. `--format=jsonn` exited `0` having printed a table, so a pipeline
+  expecting JSON received box-drawing characters and the typo surfaced as a
+  downstream parsing bug
+- `OutputFormat` names a row that is not an array, rather than failing with a
+  `TypeError` from inside `array_is_list()` or an anonymous closure, neither of
+  which identified the offending row. A non-string `--format` is reported the
+  same way instead of a `TypeError` from `strtolower()`
 - Scheduling conditions accumulate instead of overwriting each other. `when()`
   and `skip()` each kept only the last callback, and `environments()`,
   `between()` and `unlessBetween()` are built on them, so in a chain every
@@ -192,6 +206,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tasks, run non-interactively. A command that prompts through them now takes
   its default instead of asking. This is the only behavior a caller with no
   terminal could rely on: previously it hung
+- **Behavior:** `outputFormatted()` throws on an unknown `--format`, on a row
+  that is not an array, and on data JSON cannot encode. All three previously
+  produced output and exit code `0`
 - **Behavior:** `Schedule::cron()` throws `InvalidArgumentException` for an
   invalid expression. Registration that previously succeeded and failed later
   at run time now fails immediately
