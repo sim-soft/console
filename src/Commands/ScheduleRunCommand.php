@@ -67,10 +67,25 @@ class ScheduleRunCommand extends Command
         $this->failures = 0;
 
         foreach ($dueSchedules as $schedule) {
-            // Conditional scheduling
-            if ($schedule->shouldSkip()) {
-                $desc = $schedule->getDescription() ?? $schedule->getCommandName();
-                $this->comment("Skipped (condition): $desc");
+            $description = $schedule->getDescription() ?? $schedule->getCommandName();
+
+            // Conditional scheduling. A when()/skip() callback is user code and
+            // may throw — it typically checks a database, a feature flag, or an
+            // API. Uncaught, that escaped the loop and aborted the entire run,
+            // so an unrelated task's condition stopped every remaining task.
+            // Failures are isolated per task everywhere else; this is no
+            // different, and a condition that cannot be evaluated is a failure
+            // rather than a reason to run the task blindly.
+            try {
+                $shouldSkip = $schedule->shouldSkip();
+            } catch (Throwable $ex) {
+                ++$this->failures;
+                $this->error("Failed [$description]: condition threw: {$ex->getMessage()}");
+                continue;
+            }
+
+            if ($shouldSkip) {
+                $this->comment("Skipped (condition): $description");
                 continue;
             }
 

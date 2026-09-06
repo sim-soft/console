@@ -32,9 +32,11 @@ class Schedule
 
     protected ?Closure $onFailureCallback = null;
 
-    protected ?Closure $whenCallback = null;
+    /** @var Closure[] All must pass for the task to run. */
+    protected array $whenCallbacks = [];
 
-    protected ?Closure $skipCallback = null;
+    /** @var Closure[] Any one of these skips the task. */
+    protected array $skipCallbacks = [];
 
     protected ?string $outputPath = null;
 
@@ -72,6 +74,16 @@ class Schedule
      */
     public function cron(string $expression): static
     {
+        // Validate at the call site. An invalid expression otherwise threw from
+        // isDue() while the scheduler was collecting due tasks, which aborted
+        // the whole run: one typo in one entry stopped every other task from
+        // running, and the error named a cron field rather than the schedule.
+        if (!CronExpression::isValidExpression($expression)) {
+            throw new InvalidArgumentException(
+                "Invalid cron expression for \"$this->commandName\": \"$expression\"."
+            );
+        }
+
         $this->expression = $expression;
         return $this;
     }
@@ -250,24 +262,32 @@ class Schedule
     /**
      * Only run when the callback returns true.
      *
+     * Conditions accumulate: every when() must pass. They previously
+     * overwrote each other, so in a chain only the last one was consulted and
+     * the earlier ones were silently dropped — `->environments('production')
+     * ->between('01:00', '04:00')` ran in every environment.
+     *
      * @param Closure|bool $callback
      * @return $this
      */
     public function when(Closure|bool $callback): static
     {
-        $this->whenCallback = is_bool($callback) ? fn() => $callback : $callback;
+        $this->whenCallbacks[] = is_bool($callback) ? fn() => $callback : $callback;
         return $this;
     }
 
     /**
      * Skip when the callback returns true.
      *
+     * Conditions accumulate: any one of them skips the task. See when() for
+     * why these are no longer overwritten.
+     *
      * @param Closure|bool $callback
      * @return $this
      */
     public function skip(Closure|bool $callback): static
     {
-        $this->skipCallback = is_bool($callback) ? fn() => $callback : $callback;
+        $this->skipCallbacks[] = is_bool($callback) ? fn() => $callback : $callback;
         return $this;
     }
 
@@ -475,12 +495,16 @@ class Schedule
      */
     public function shouldSkip(): bool
     {
-        if ($this->whenCallback && !($this->whenCallback)()) {
-            return true;
+        foreach ($this->whenCallbacks as $callback) {
+            if (!$callback()) {
+                return true;
+            }
         }
 
-        if ($this->skipCallback && ($this->skipCallback)()) {
-            return true;
+        foreach ($this->skipCallbacks as $callback) {
+            if ($callback()) {
+                return true;
+            }
         }
 
         return false;

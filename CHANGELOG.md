@@ -108,6 +108,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   array|string, null returned" — which named the method but not the reason it
   had nothing to return. This is the common shape of the bug: a command written
   against a terminal, later run from cron or a test
+- Scheduling conditions accumulate instead of overwriting each other. `when()`
+  and `skip()` each kept only the last callback, and `environments()`,
+  `between()` and `unlessBetween()` are built on them, so in a chain every
+  condition but the last was silently discarded:
+  `->environments('production')->between('01:00', '04:00')` ran in every
+  environment. Every `when()` must now pass, and any `skip()` skips the task
+- `Schedule::cron()` validates its expression when the schedule is registered.
+  An invalid expression threw from `isDue()` while `schedule:run` was collecting
+  due tasks, which aborted the run before anything executed: one typo in one
+  entry stopped every other task, and the error named a cron field rather than
+  the schedule that carried it
+- A `when()` or `skip()` callback that throws no longer aborts the whole
+  scheduled run. Conditions commonly consult a database or an API, and an
+  unavailable dependency stopped every remaining task. The failure is now
+  isolated like any other: it is reported, counted toward the exit code, and the
+  task it guards is not run
 - `Command::withProgressBar()` rejects a `Countable` that is not also iterable.
   Its signature accepts one, but the body could not traverse it: the progress
   bar ran to 100% while the callback was never invoked, reporting a complete
@@ -176,6 +192,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tasks, run non-interactively. A command that prompts through them now takes
   its default instead of asking. This is the only behavior a caller with no
   terminal could rely on: previously it hung
+- **Behavior:** `Schedule::cron()` throws `InvalidArgumentException` for an
+  invalid expression. Registration that previously succeeded and failed later
+  at run time now fails immediately
 - **Behavior:** `choice()` declares `$defaultIndex` as
   `bool|float|int|string|null` rather than `mixed`. Symfony's `ChoiceQuestion`
   has always rejected anything else, so this only moves the error to the call

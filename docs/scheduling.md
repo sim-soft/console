@@ -85,6 +85,11 @@ Arguments are range-checked: minutes `0-59`, hours `0-23`, day of week `0-7`
 bounds throws `InvalidArgumentException` when the schedule is registered, rather
 than producing a cron expression that never fires.
 
+`cron()` validates its expression the same way, for the same reason: an invalid
+expression previously threw while `schedule:run` was working out which tasks
+were due, which aborted the run before any task executed. One typo took down the
+whole schedule, and the error named a cron field rather than the entry.
+
 ## Options & Hooks
 
 | Method                             | Description                                   |
@@ -120,10 +125,21 @@ $scheduler->command('data:sync')
     ->unlessBetween('02:00', '04:00');
 ```
 
+Conditions accumulate rather than replace each other, so the chain above means
+what it reads as: every `when()` must pass, and any `skip()` skips the task.
+`environments()`, `between()`, and `unlessBetween()` are built on `when()` and
+`skip()`, so they combine with them and with each other.
+
 `between()` and `unlessBetween()` evaluate their window in the schedule's
 timezone, so `timezone()` may be called before or after them. A window whose end
 is earlier than its start is treated as crossing midnight — `between('22:00',
 '06:00')` matches the evening and the small hours, not the daytime in between.
+
+A condition that throws is treated as a failed task: it is reported, counted in
+the exit code, and the task it guards does not run. The remaining tasks still
+do. Conditions often reach for a database or an API, and an unavailable
+dependency should not silently run a task that was meant to be gated — nor stop
+every other task in the schedule.
 
 ## Output Capture
 
