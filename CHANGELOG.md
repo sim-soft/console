@@ -8,6 +8,32 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-09-07
+
+A major release: the supported Symfony range narrowed, and several documented
+behaviours changed in ways that affect working code, not only code that was
+already failing.
+
+### Upgrading from 2.x
+
+Read these four before upgrading. The rest of this entry is either a fix to
+something that was broken or a new error on input that never worked.
+
+- **Symfony 7.4 is now the floor** (was 7.2). `2.0.0` declared `^7.2` but called
+  `Application::addCommand()`, added in 7.4, so installing against 7.2 or 7.3
+  resolved cleanly and then failed at run time. If you are pinned below 7.4 you
+  must upgrade Symfony with this release
+- **Dates parse to midnight.** `DateOption` and `DateRangeOption` previously
+  inherited the current time of day, so an inclusive `--to-date` included that
+  morning's records at 06:00 and excluded them at 18:00, over the same data.
+  This is the change most likely to alter output silently rather than raise an
+  error: compare against `$toDate->modify('+1 day')` for an inclusive bound
+- **Commands invoked from code run non-interactively.** `Application::call()`
+  and scheduled tasks no longer prompt; a prompt takes its default. Previously
+  they blocked on stdin forever with the process still looking healthy
+- **A lockable command that cannot acquire its lock exits `SUCCESS`** instead of
+  waiting for the lock to be released
+
 ### Fixed
 
 - `Command::choice()` no longer disables input interactivity as a side effect.
@@ -190,6 +216,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Coverage for `tree()`, `createProgressIndicator()` and `secret()`, three
   documented methods that no test exercised, and for the stderr rendering
   contract of `Application::call()`
+- CI runs the matrix against PHP 8.5 and, on every cell, against the lowest
+  versions each constraint allows. `composer install` resolves to the highest
+  match, so a range's lower bound is a promise nobody was testing — which is how
+  the false `^7.2` claim survived. A `--prefer-lowest` leg fails in CI instead
+  of in an application
 
 ### Changed
 
@@ -255,6 +286,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `bool|float|int|string|null` rather than `mixed`. Symfony's `ChoiceQuestion`
   has always rejected anything else, so this only moves the error to the call
   site — no working call changes
+- **Dependencies:** `symfony/console` and `symfony/lock` require
+  `^7.4 || ^8.0`, replacing `^7.2`. The code calls `Application::addCommand()`,
+  which Symfony added in 7.4; the old constraint installed without complaint and
+  then failed at run time. Symfony 7.4 itself requires PHP 8.2, so the existing
+  PHP floor is unchanged
+- The distributed package contains only what applications load. `.gitattributes`
+  had no `export-ignore` rules, so `composer require` fetched the test suite,
+  the documentation site, CI workflows and editor files — 101 files where 16 are
+  reachable from the autoloader. Installs drop from 560 KB to 150 KB; the
+  sources, licence, changelog and README are unaffected
 
 ### Documentation
 
@@ -277,6 +318,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Entry scripts carry a `#!/usr/bin/env php` shebang and the quickstart adds
   the `chmod +x console` step that makes it effective; shell examples invoke
   `./console`, with the `php console` fallback noted for Windows
+- The progress indicator example no longer loops on `$this->isStillWorking()`,
+  a method that does not exist. It sat inside an otherwise complete block, so
+  copying it produced a fatal; it now reads a file, which is the case an
+  indeterminate indicator is for
+- The README reports the output the default formatter actually writes —
+  messages are timestamped, so the hello-world example prints
+  `[2024-03-15 10:30:00] Hello World` — and declares command properties
+  `public static`, matching every other example and the base class
+- Packagist version, PHP version, build status and PHPStan level badges on the
+  README and the documentation landing page
+
+### Internal
+
+- The timezone tests no longer skip themselves. Five tests in
+  `ScheduleHardeningTest` built their windows relative to "now" and skipped when
+  the result crossed midnight, so which of them ran depended on the hour the
+  suite started and the timezone handling in `between()`/`unlessBetween()` went
+  unverified for part of every day. They now select a timezone that leaves room
+  for the window — and, where the point is timezone-awareness, one whose window
+  excludes the server's own time, without which a timezone-blind implementation
+  passes by coincidence
 
 ## [2.0.0] - 2026-05-28
 
