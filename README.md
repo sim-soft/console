@@ -1,10 +1,14 @@
 # Simsoft Console
 
-A lightweight, Laravel-inspired wrapper for Symfony Console — built PHP CLI
+A lightweight, Laravel-inspired wrapper for Symfony Console — build PHP CLI
 commands with less boilerplate.
 
+[![Packagist Version](https://img.shields.io/packagist/v/simsoft/console.svg?label=Packagist)](https://packagist.org/packages/simsoft/console)
+[![PHP Version](https://img.shields.io/packagist/dependency-v/simsoft/console/php.svg?label=PHP)](https://packagist.org/packages/simsoft/console)
+[![Tests](https://github.com/sim-soft/console/actions/workflows/tests.yml/badge.svg)](https://github.com/sim-soft/console/actions/workflows/tests.yml)
+[![PHPStan](https://img.shields.io/badge/PHPStan-level%209-brightgreen.svg)](https://phpstan.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-online-green.svg)](https://sim-soft.github.io/console/)
+[![Documentation](https://img.shields.io/badge/Docs-online-green.svg)](https://sim-soft.github.io/console/)
 
 ## Requirements
 
@@ -23,6 +27,7 @@ composer require simsoft/console
 ## Quick Start
 
 ```php
+#!/usr/bin/env php
 <?php
 declare(strict_types=1);
 require "vendor/autoload.php";
@@ -49,8 +54,8 @@ use Simsoft\Console\Command;
 
 class HelloWorldCommand extends Command
 {
-    static string $name = 'screen:welcome';
-    static string $description = 'Display a welcome message';
+    public static string $name = 'screen:welcome';
+    public static string $description = 'Display a welcome message';
 
     protected function handle(): void
     {
@@ -60,9 +65,14 @@ class HelloWorldCommand extends Command
 ```
 
 ```shell
-php console screen:welcome
-# Output: Hello World
+chmod +x console
+./console screen:welcome
+# [2024-03-15 10:30:00] Hello World
 ```
+
+Output is timestamped by default; set `protected bool $messageTimeStamp = false;`
+on a command to turn the prefix off. On Windows the shebang is ignored, so run
+`php console screen:welcome` instead.
 
 ## Documentation
 

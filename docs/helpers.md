@@ -106,7 +106,9 @@ $bar->finish();
 
 ## Progress Indicator
 
-For tasks with an unknown duration (indeterminate progress):
+For tasks with an unknown duration (indeterminate progress) — streaming a file,
+draining a queue, paging an API. Use `createProgressBar()` instead whenever the
+total is known up front, since that can show a percentage.
 
 ```php
 protected function handle(): void
@@ -115,10 +117,16 @@ protected function handle(): void
 
     $indicator->start('Processing...');
 
-    while ($this->isStillWorking()) {
-        // do work...
+    $handle = fopen('data.log', 'r');
+
+    // The line count is not known until the file has been read, which is
+    // exactly when an indicator is the right choice over a progress bar.
+    while (($line = fgets($handle)) !== false) {
+        // process $line...
         $indicator->advance();
     }
+
+    fclose($handle);
 
     $indicator->finish('Complete!');
 }
