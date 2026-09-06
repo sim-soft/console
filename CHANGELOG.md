@@ -77,6 +77,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cannot be launched, instead of passing it to `pclose()` and raising a
   `TypeError` on top of an already failed launch. The launch failure is counted
   and reported like any other task failure, leaving the remaining tasks to run
+- Background scheduled tasks pass array-valued arguments correctly. A
+  multi-value option — legal in `ArrayInput` — was interpolated into the shell
+  command as the literal string `Array`, behind an "Array to string conversion"
+  warning, so the background process ran with an argument nobody wrote. The
+  option is now repeated once per value. Booleans pass as `true`/`false` rather
+  than `1`/`""`, an empty string being indistinguishable from an omitted value,
+  and an argument with no faithful string form is rejected by name instead of
+  raising `Object of class X could not be converted to string`
+- Background scheduled tasks resolve the entry script when `$_SERVER['argv']`
+  is present but not a list, which happens with `register_argc_argv` off. The
+  old `$_SERVER['argv'][0] ?? 'console'` fallback covered only the absent case:
+  a string there indexed to its first character, launching the task against a
+  one-character path
+- `Command::choice()` explains itself when input is non-interactive and no
+  default was given, instead of failing with "Return value must be of type
+  array|string, null returned" — which named the method but not the reason it
+  had nothing to return. This is the common shape of the bug: a command written
+  against a terminal, later run from cron or a test
 - `Command::withProgressBar()` rejects a `Countable` that is not also iterable.
   Its signature accepts one, but the body could not traverse it: the progress
   bar ran to 100% while the callback was never invoked, reporting a complete
@@ -127,9 +145,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   remain, each documented in place: `trait.unused` under `src/Traits` (the
   traits are consumed by applications, not by this package) and `new.static` in
   `Command` (guarded by a reflection check PHPStan cannot follow)
-- Static analysis runs at PHPStan level 8 rather than 6, so nullable types are
-  checked. The findings it surfaced were missing validation rather than missing
-  annotations, and were fixed as such — see the guards listed under Fixed
+- Static analysis runs at PHPStan level 9 — the maximum — rather than 6, so
+  nullable types and `mixed` are both checked. The findings were missing
+  validation rather than missing annotations, and were fixed as such; see the
+  guards listed under Fixed
+- **Behavior:** `choice()` declares `$defaultIndex` as
+  `bool|float|int|string|null` rather than `mixed`. Symfony's `ChoiceQuestion`
+  has always rejected anything else, so this only moves the error to the call
+  site — no working call changes
 
 ## [2.0.0] - 2026-05-28
 

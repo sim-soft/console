@@ -31,7 +31,21 @@ protected function handle(): void
 | `ask`     | `ask(string $question, bool\|float\|int\|string\|null $default = null)`                                                                                                                      | `bool\|float\|int\|string\|null` |
 | `secret`  | `secret(string $question, bool\|float\|int\|string\|null $default = null)`                                                                                                                   | `bool\|float\|int\|string\|null` |
 | `confirm` | `confirm(string $question, bool $default = false)`                                                                                                                                           | `bool`                           |
-| `choice`  | `choice(string $question, array $choices, mixed $defaultIndex = null, bool $allowMultipleSelections = false, ?int $maxAttempt = null, string $prompt = ' > ', string $errorMessage = '...')` | `string\|array`                  |
+| `choice`  | `choice(string $question, array $choices, bool\|float\|int\|string\|null $defaultIndex = null, bool $allowMultipleSelections = false, ?int $maxAttempt = null, string $prompt = ' > ', string $errorMessage = '...')` | `string\|array`                  |
+
+`$defaultIndex` is a key of `$choices`, not a value.
+
+**Under `--no-interaction`** — cron, CI, a test — a prompt cannot be answered,
+so `ask`, `secret`, and `choice` return their default. `confirm` returns its
+default too, which is `false` unless you pass otherwise. `choice` has nothing
+to return when no default was given, and throws rather than failing later on
+its return type; pass `$defaultIndex`, or guard the prompt:
+
+```php
+if ($this->input->isInteractive()) {
+    $color = $this->choice('Pick a color:', ['Red', 'Green', 'Blue']);
+}
+```
 
 ## Table
 

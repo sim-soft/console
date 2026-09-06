@@ -250,15 +250,22 @@ class ScheduleRunCommand extends Command
     {
         // Paths may contain spaces (e.g. C:\Program Files\php\php.exe).
         $php = escapeshellarg(PHP_BINARY);
-        $script = escapeshellarg($_SERVER['argv'][0] ?? 'console');
+        $script = escapeshellarg($this->scriptPath());
         $args = escapeshellarg($schedule->getCommandName());
 
         foreach ($schedule->getArguments() as $key => $value) {
-            if (str_starts_with($key, '--')) {
-                $args .= ' ' . escapeshellarg("$key=$value");
-                continue;
+            // A multi-value option is an array in ArrayInput, and is legal here.
+            // Interpolating it produced the literal string "Array" behind an
+            // "Array to string conversion" warning, so the background task ran
+            // with an argument nobody wrote. Repeat the option instead, which is
+            // how the terminal would have passed it.
+            foreach (is_array($value) ? $value : [$value] as $item) {
+                $args .= ' ' . escapeshellarg(
+                    str_starts_with((string)$key, '--')
+                        ? $key . '=' . $this->stringifyArgument($item, (string)$key)
+                        : $this->stringifyArgument($item, (string)$key)
+                );
             }
-            $args .= ' ' . escapeshellarg((string)$value);
         }
 
         $output = '';
@@ -268,6 +275,54 @@ class ScheduleRunCommand extends Command
         }
 
         return trim("$php $script $args $output");
+    }
+
+    /**
+     * Get the entry script to re-invoke for a background task.
+     *
+     * @return string
+     */
+    private function scriptPath(): string
+    {
+        $argv = $_SERVER['argv'] ?? null;
+
+        // $_SERVER['argv'] is absent under some SAPIs and, when register_argc_argv
+        // is off, can be present as something other than a list. The old
+        // `$_SERVER['argv'][0] ?? 'console'` only covered the absent case: a
+        // string there indexed to its first character, so the background task was
+        // launched against a one-letter path that does not exist.
+        if (is_array($argv) && isset($argv[0]) && is_string($argv[0])) {
+            return $argv[0];
+        }
+
+        return 'console';
+    }
+
+    /**
+     * Render a scheduled argument as a shell argument.
+     *
+     * @param mixed $value
+     * @param string $key Named in the error.
+     * @return string
+     * @throws RuntimeException If the value has no faithful string form.
+     */
+    private function stringifyArgument(mixed $value, string $key): string
+    {
+        if (is_scalar($value)) {
+            // Booleans stringify to "1"/"" otherwise, and an empty argument is
+            // indistinguishable from an omitted one on the command line.
+            return is_bool($value) ? ($value ? 'true' : 'false') : (string)$value;
+        }
+
+        if ($value instanceof \Stringable) {
+            return (string)$value;
+        }
+
+        throw new RuntimeException(sprintf(
+            'Scheduled argument "%s" is %s, which cannot be passed to a background process.',
+            $key,
+            get_debug_type($value)
+        ));
     }
 
     /**

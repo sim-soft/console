@@ -481,9 +481,10 @@ abstract class Command extends ConsoleCommand
      */
     public function ask(string $question, bool|float|int|null|string $default = null): bool|float|int|null|string
     {
-        /** @var QuestionHelper $helper */
-        $helper = $this->getHelper('question');
-        return $helper->ask($this->input, $this->output, new Question($question, $default));
+        return $this->scalarAnswer(
+            $this->askQuestion(new Question($question, $default)),
+            __FUNCTION__
+        );
     }
 
     /**
@@ -495,9 +496,10 @@ abstract class Command extends ConsoleCommand
      */
     public function secret(string $question, bool|float|int|null|string $default = null): bool|float|int|null|string
     {
-        /** @var QuestionHelper $helper */
-        $helper = $this->getHelper('question');
-        return $helper->ask($this->input, $this->output, (new Question($question, $default))->setHidden(true));
+        return $this->scalarAnswer(
+            $this->askQuestion((new Question($question, $default))->setHidden(true)),
+            __FUNCTION__
+        );
     }
 
     /**
@@ -509,9 +511,10 @@ abstract class Command extends ConsoleCommand
      */
     public function confirm(string $question, bool $default = false): bool
     {
-        /** @var QuestionHelper $helper */
-        $helper = $this->getHelper('question');
-        return $helper->ask($this->input, $this->output, new ConfirmationQuestion($question, $default));
+        // ConfirmationQuestion installs a normalizer that reduces every answer to
+        // a bool, and the non-interactive path returns the bool default, so this
+        // cast never changes a value — it just states the contract to the caller.
+        return (bool)$this->askQuestion(new ConfirmationQuestion($question, $default));
     }
 
     /**
@@ -519,35 +522,97 @@ abstract class Command extends ConsoleCommand
      *
      * @param string $question
      * @param array<array-key, string> $choices
-     * @param mixed|null $defaultIndex
+     * @param bool|float|int|string|null $defaultIndex A key of $choices, or null for no default.
      * @param bool $allowMultipleSelections
      * @param int|null $maxAttempt Max attempts on invalid input. Null means unlimited.
      * @param string $prompt
      * @param string $errorMessage
      * @return string|array<int, string>
      * @throws InvalidArgumentException If $maxAttempt is less than 1.
+     * @throws RuntimeException If input is non-interactive and no default was given.
      */
     public function choice(
         string $question,
         array $choices,
-        mixed $defaultIndex = null,
+        bool|float|int|string|null $defaultIndex = null,
         bool $allowMultipleSelections = false,
         ?int $maxAttempt = null,
         string $prompt = ' > ',
         string $errorMessage = 'Invalid value: "%s"',
     ): string|array {
 
-        $question = (new ChoiceQuestion($question, $choices, $defaultIndex))
+        $choiceQuestion = (new ChoiceQuestion($question, $choices, $defaultIndex))
             ->setMultiselect($allowMultipleSelections)
             ->setPrompt($prompt)
             ->setErrorMessage($errorMessage)
             ->setMaxAttempts($maxAttempt)
         ;
 
+        $answer = $this->askQuestion($choiceQuestion);
+
+        // Non-interactive input with no default answers null, which does not
+        // satisfy the declared return type: the call died with a TypeError
+        // naming this method rather than the missing default. That is the usual
+        // shape of the bug — a command written against a terminal, later run
+        // from cron or a test with --no-interaction.
+        if ($answer === null) {
+            throw new RuntimeException(sprintf(
+                'choice("%s") has no answer: input is not interactive and no default was given. '
+                . 'Pass $defaultIndex, or guard the prompt with $this->input->isInteractive().',
+                $question
+            ));
+        }
+
+        if (is_string($answer) || is_array($answer)) {
+            /** @var string|array<int, string> $answer */
+            return $answer;
+        }
+
+        throw new RuntimeException(sprintf(
+            'choice("%s") answered %s, which is neither a choice nor a list of them.',
+            $question,
+            get_debug_type($answer)
+        ));
+    }
+
+    /**
+     * Put a question to the user.
+     *
+     * @param Question $question
+     * @return mixed Whatever the helper answered — narrowed by the caller.
+     */
+    protected function askQuestion(Question $question): mixed
+    {
         /** @var QuestionHelper $helper */
         $helper = $this->getHelper('question');
 
         return $helper->ask($this->input, $this->output, $question);
+    }
+
+    /**
+     * Narrow a helper answer to the scalar union the prompt methods declare.
+     *
+     * QuestionHelper::ask() returns mixed: a normalizer or validator set on the
+     * question can return anything at all. Nothing here installs one, so this is
+     * a guard on the contract rather than a path taken in practice — but when a
+     * subclass does install one, this names the method that broke instead of
+     * failing with a bare TypeError on the return.
+     *
+     * @param mixed $answer
+     * @param string $method The calling method, named in the error.
+     * @return bool|float|int|string|null
+     */
+    protected function scalarAnswer(mixed $answer, string $method): bool|float|int|string|null
+    {
+        if ($answer !== null && !is_scalar($answer)) {
+            throw new RuntimeException(sprintf(
+                '%s() answered %s; expected a scalar or null.',
+                $method,
+                get_debug_type($answer)
+            ));
+        }
+
+        return $answer;
     }
 
     /**
