@@ -3,6 +3,10 @@
 > A lightweight, Laravel-inspired wrapper for Symfony Console — build PHP CLI
 > commands with less boilerplate.
 
+[![Packagist Version](https://img.shields.io/packagist/v/simsoft/console.svg)](https://packagist.org/packages/simsoft/console)
+[![Tests](https://github.com/sim-soft/console/actions/workflows/tests.yml/badge.svg)](https://github.com/sim-soft/console/actions/workflows/tests.yml)
+[![PHPStan](https://img.shields.io/badge/PHPStan-level%209-brightgreen.svg)](https://phpstan.org/)
+
 ## Features
 
 - Class-based and closure commands
