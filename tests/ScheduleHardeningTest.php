@@ -31,41 +31,77 @@ class ScheduleHardeningTest extends TestCase
     }
 
     /**
-     * Pick a timezone whose current hour differs from the server's, so a
-     * timezone-blind implementation cannot pass by coincidence.
+     * A timezone whose current local hour falls inside the given band.
+     *
+     * These tests build their windows by adding and subtracting hours from
+     * "now". A zone whose clock currently sits near midnight produces a window
+     * that wraps, which most of these assertions cannot express — so they used
+     * to skip themselves, silently, for a few hours out of every day. Choosing
+     * the zone by where its clock stands instead keeps the window inside one
+     * day whatever time the suite runs.
+     *
+     * Offsets run from -11 to +14, so every hour of the clock is somebody's
+     * local hour and any band this file asks for is satisfiable.
      */
-    private function timezoneOffsetFromServerBy(int $hours): DateTimeZone
+    private function zoneWithLocalHourBetween(int $minHour, int $maxHour): DateTimeZone
     {
-        $target = (new DateTimeImmutable('now'))->modify("$hours hours");
-
         foreach (DateTimeZone::listIdentifiers() as $identifier) {
             $zone = new DateTimeZone($identifier);
-            $now = new DateTimeImmutable('now', $zone);
+            $hour = (int)(new DateTimeImmutable('now', $zone))->format('G');
 
-            if ($now->format('H') === $target->format('H')) {
+            if ($hour >= $minHour && $hour <= $maxHour) {
                 return $zone;
             }
         }
 
-        $this->markTestSkipped("No timezone found offset by $hours hours from the server.");
+        // Not a skip: every hour is covered by some zone, so reaching here
+        // means the assumption above no longer holds and the tests relying on
+        // it are not testing what they claim.
+        self::fail("No timezone found whose local hour is between $minHour and $maxHour.");
+    }
+
+    /**
+     * A one-hour-either-side window around "now" in some timezone, chosen so
+     * that the server's own current time falls *outside* it.
+     *
+     * Both properties matter. Without the first the window wraps midnight;
+     * without the second a timezone-blind implementation passes by
+     * coincidence, which is the bug these tests exist to catch.
+     *
+     * @return array{DateTimeZone, string, string} Zone, window start, window end.
+     */
+    private function remoteWindowExcludingServerTime(): array
+    {
+        $serverNow = (new DateTimeImmutable('now'))->format('H:i');
+
+        foreach (DateTimeZone::listIdentifiers() as $identifier) {
+            $zone = new DateTimeZone($identifier);
+            $remoteNow = new DateTimeImmutable('now', $zone);
+
+            $start = $remoteNow->modify('-1 hour')->format('H:i');
+            $end = $remoteNow->modify('+1 hour')->format('H:i');
+
+            if ($start > $end) {
+                continue;
+            }
+
+            if ($serverNow >= $start && $serverNow <= $end) {
+                continue;
+            }
+
+            return [$zone, $start, $end];
+        }
+
+        self::fail('No timezone found whose current window excludes the server time.');
     }
 
     // --- between() must honour the schedule timezone ---
 
     public function testBetweenUsesTheScheduleTimezone(): void
     {
-        // A window around "now" in a zone six hours away from the server.
-        $zone = $this->timezoneOffsetFromServerBy(6);
-        $remoteNow = new DateTimeImmutable('now', $zone);
-
-        $start = $remoteNow->modify('-1 hour')->format('H:i');
-        $end = $remoteNow->modify('+1 hour')->format('H:i');
-
-        // Skip if the window straddles midnight; the overnight branch is
-        // covered separately and would make this assertion ambiguous.
-        if ($start > $end) {
-            $this->markTestSkipped('Window wraps midnight for the chosen timezone.');
-        }
+        // A window around "now" in a zone whose clock differs enough from the
+        // server's that the server time falls outside the window.
+        [$zone, $start, $end] = $this->remoteWindowExcludingServerTime();
 
         $schedule = (new Schedule('x'))->timezone($zone)->between($start, $end);
 
@@ -75,15 +111,7 @@ class ScheduleHardeningTest extends TestCase
 
     public function testBetweenIsTimezoneAwareRegardlessOfCallOrder(): void
     {
-        $zone = $this->timezoneOffsetFromServerBy(6);
-        $remoteNow = new DateTimeImmutable('now', $zone);
-
-        $start = $remoteNow->modify('-1 hour')->format('H:i');
-        $end = $remoteNow->modify('+1 hour')->format('H:i');
-
-        if ($start > $end) {
-            $this->markTestSkipped('Window wraps midnight for the chosen timezone.');
-        }
+        [$zone, $start, $end] = $this->remoteWindowExcludingServerTime();
 
         // timezone() applied *after* between() must still be honoured.
         $schedule = (new Schedule('x'))->between($start, $end)->timezone($zone);
@@ -93,16 +121,14 @@ class ScheduleHardeningTest extends TestCase
 
     public function testBetweenExcludesTimesOutsideTheWindowInScheduleTimezone(): void
     {
-        $zone = new DateTimeZone('UTC');
-        $utcNow = new DateTimeImmutable('now', $zone);
+        // Local hour 0-19 leaves room for the +3/+4 hour window below to stay
+        // inside the same day.
+        $zone = $this->zoneWithLocalHourBetween(0, 19);
+        $now = new DateTimeImmutable('now', $zone);
 
-        // A one-hour window that definitely does not contain "now" in UTC.
-        $start = $utcNow->modify('+3 hours')->format('H:i');
-        $end = $utcNow->modify('+4 hours')->format('H:i');
-
-        if ($start > $end) {
-            $this->markTestSkipped('Window wraps midnight.');
-        }
+        // A one-hour window that definitely does not contain "now".
+        $start = $now->modify('+3 hours')->format('H:i');
+        $end = $now->modify('+4 hours')->format('H:i');
 
         $schedule = (new Schedule('x'))->timezone($zone)->between($start, $end);
 
@@ -111,15 +137,12 @@ class ScheduleHardeningTest extends TestCase
 
     public function testUnlessBetweenUsesTheScheduleTimezone(): void
     {
-        $zone = new DateTimeZone('UTC');
-        $utcNow = new DateTimeImmutable('now', $zone);
+        // Local hour 1-22 keeps the one-hour-either-side window off midnight.
+        $zone = $this->zoneWithLocalHourBetween(1, 22);
+        $now = new DateTimeImmutable('now', $zone);
 
-        $start = $utcNow->modify('-1 hour')->format('H:i');
-        $end = $utcNow->modify('+1 hour')->format('H:i');
-
-        if ($start > $end) {
-            $this->markTestSkipped('Window wraps midnight.');
-        }
+        $start = $now->modify('-1 hour')->format('H:i');
+        $end = $now->modify('+1 hour')->format('H:i');
 
         $schedule = (new Schedule('x'))->timezone($zone)->unlessBetween($start, $end);
 
@@ -129,13 +152,14 @@ class ScheduleHardeningTest extends TestCase
 
     public function testBetweenWithoutTimezoneFallsBackToServerTime(): void
     {
+        // This one is about the server clock specifically, so the zone cannot
+        // be chosen — move the server clock instead, and put it at midday so
+        // the window cannot wrap. tearDown() restores it.
+        date_default_timezone_set($this->zoneWithLocalHourBetween(1, 22)->getName());
+
         $now = new DateTimeImmutable('now');
         $start = $now->modify('-1 hour')->format('H:i');
         $end = $now->modify('+1 hour')->format('H:i');
-
-        if ($start > $end) {
-            $this->markTestSkipped('Window wraps midnight.');
-        }
 
         $schedule = (new Schedule('x'))->between($start, $end);
 
