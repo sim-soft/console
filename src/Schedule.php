@@ -511,13 +511,29 @@ class Schedule
     }
 
     // ─── Getters ─────────────────────────────────────────────────────────
+    //
+    // These exist so ScheduleRunCommand and ScheduleListCommand can read back
+    // what the fluent methods above configured. They are public only because
+    // those classes live in a different namespace, not because they are part
+    // of the API this package offers — nothing in the documentation calls
+    // them, and their shape follows the runner's needs rather than any
+    // external contract. Marked @internal so that stays true: they may change
+    // or disappear in a minor release.
+    //
+    // The fluent configuration methods above, isDue() and shouldSkip() are
+    // deliberately not marked — those are the supported surface.
 
+    /**
+     * @internal
+     */
     public function getCommandName(): string
     {
         return $this->commandName;
     }
 
     /**
+     * @internal
+     *
      * @return array<string, mixed>
      */
     public function getArguments(): array
@@ -525,66 +541,105 @@ class Schedule
         return $this->arguments;
     }
 
+    /**
+     * @internal
+     */
     public function getExpression(): string
     {
         return $this->expression;
     }
 
+    /**
+     * @internal
+     */
     public function getDescription(): ?string
     {
         return $this->description;
     }
 
+    /**
+     * @internal
+     */
     public function isWithoutOverlapping(): bool
     {
         return $this->withoutOverlapping;
     }
 
+    /**
+     * @internal
+     */
     public function isRunInBackground(): bool
     {
         return $this->runInBackground;
     }
 
+    /**
+     * @internal
+     */
     public function getOutputPath(): ?string
     {
         return $this->outputPath;
     }
 
+    /**
+     * @internal
+     */
     public function isAppendOutput(): bool
     {
         return $this->appendOutput;
     }
 
+    /**
+     * @internal
+     */
     public function getBeforeCallback(): ?Closure
     {
         return $this->beforeCallback;
     }
 
+    /**
+     * @internal
+     */
     public function getAfterCallback(): ?Closure
     {
         return $this->afterCallback;
     }
 
+    /**
+     * @internal
+     */
     public function getOnFailureCallback(): ?Closure
     {
         return $this->onFailureCallback;
     }
 
+    /**
+     * @internal
+     */
     public function getPingBeforeUrl(): ?string
     {
         return $this->pingBeforeUrl;
     }
 
+    /**
+     * @internal
+     */
     public function getPingAfterUrl(): ?string
     {
         return $this->pingAfterUrl;
     }
 
+    /**
+     * @internal
+     */
     public function getPingOnFailureUrl(): ?string
     {
         return $this->pingOnFailureUrl;
     }
 
+    /**
+     * @internal
+     */
     public function isRunInMaintenanceMode(): bool
     {
         return $this->runInMaintenanceMode;

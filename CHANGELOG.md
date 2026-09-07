@@ -8,6 +8,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation
+
+- The fifteen accessors on `Schedule` — `getCommandName()`, `getExpression()`,
+  `isWithoutOverlapping()` and the rest below the `Getters` divider — are now
+  marked `@internal`. They exist so `ScheduleRunCommand` and
+  `ScheduleListCommand` can read back what the fluent methods configured, and
+  are public only because those classes sit in a different namespace. No
+  signature changed and nothing was removed, so this breaks no code; it records
+  that these may change in a minor release, which is why it is documentation
+  rather than a deprecation.
+
+  The fluent configuration methods, `isDue()` and `shouldSkip()` are
+  deliberately not marked, nor is anything on `Scheduler` — `getSchedules()`
+  and `getDueSchedules()` return `Schedule[]` and are what a custom runner or
+  health check would legitimately call.
+
+### Internal
+
+- Added a scheduled `Upstream` workflow. The Symfony constraint has an open
+  upper bound and no `composer.lock` is committed, so a Symfony release can
+  break consumers without a commit landing here while push-triggered CI stays
+  green because it never runs. The workflow tests the newest stable Symfony on
+  PHP 8.2 and 8.5, plus Symfony's development branches as non-blocking early
+  warning.
+
 ## [3.0.0] - 2026-09-07
 
 A major release: the supported Symfony range narrowed, and several documented
