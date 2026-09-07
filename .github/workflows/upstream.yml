@@ -1,0 +1,125 @@
+name: Upstream
+
+# The Symfony constraint is an open upper bound (^7.4 || ^8.0), and no
+# composer.lock is committed — both correct for a library, but together they
+# mean every consumer resolves Symfony fresh at install time while this repo's
+# CI only runs when we push. A Symfony release can therefore break the package
+# without a commit landing here, and the push-triggered suite stays green
+# because it never runs.
+#
+# Nothing below tests code the Tests workflow does not already cover. The
+# difference is the clock: this finds upstream breakage on a schedule instead
+# of leaving it for a user's `composer update` to discover.
+on:
+  schedule:
+    # 04:17 on Mondays. Off the hour deliberately — scheduled jobs on the hour
+    # queue behind everyone else's, and GitHub drops runs it cannot place.
+    - cron: '17 4 * * 1'
+  # So the job can be exercised without waiting for Monday.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stable:
+    runs-on: ubuntu-latest
+
+    name: Newest stable Symfony (PHP ${{ matrix.php }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest and newest supported runtimes only. The middle versions add
+        # nothing here: this job looks for breakage in the Symfony release,
+        # which is not a property of the PHP patch level.
+        php: [ '8.2', '8.5' ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring
+          coverage: none
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+        with:
+          dependency-versions: highest
+
+      - name: Show resolved Symfony
+        run: composer show symfony/console symfony/lock | grep -E '^(name|versions)'
+
+      - name: Run tests
+        run: vendor/bin/phpunit --no-coverage
+
+  dev:
+    runs-on: ubuntu-latest
+
+    name: Symfony dev branch (early warning)
+
+    # Unreleased code breaks for reasons that are upstream's problem and are
+    # often fixed within days. A red X here should inform, not block.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring
+          coverage: none
+
+      # Symfony's split repositories publish no dev-main; they use branch
+      # aliases (8.2.x-dev) whose names change every release, so pinning one
+      # would rot. A bare range under dev stability picks up whichever branch
+      # is current and needs no edit when Symfony opens the next one.
+      #
+      # Edited directly rather than via `composer require --no-update`: that
+      # command leaves the constraint untouched if it cannot resolve, which
+      # would silently test stable Symfony while the job name claims otherwise.
+      - name: Point Symfony at its development branch
+        run: |
+          php -r '
+            $f = "composer.json";
+            $c = json_decode(file_get_contents($f), true);
+            $c["minimum-stability"] = "dev";
+            $c["prefer-stable"] = false;
+            foreach (["symfony/console", "symfony/lock"] as $pkg) {
+                $c["require"][$pkg] = ">=8.0 <9.0";
+            }
+            file_put_contents($f, json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+          '
+
+      - name: Install dependencies
+        run: composer update --no-interaction --prefer-dist
+
+      # Without this the job passes for the wrong reason whenever the step
+      # above fails to take effect: a green run would then mean "stable Symfony
+      # still works", which the stable job already told us. Fail loudly instead.
+      - name: Assert a dev branch was actually installed
+        run: |
+          php -r '
+            $lock = json_decode(file_get_contents("composer.lock"), true);
+            $bad = [];
+            foreach ($lock["packages"] as $p) {
+                if (in_array($p["name"], ["symfony/console", "symfony/lock"], true)) {
+                    printf("%s %s\n", $p["name"], $p["version"]);
+                    if (!str_contains($p["version"], "dev")) {
+                        $bad[] = $p["name"] . " " . $p["version"];
+                    }
+                }
+            }
+            if ($bad) {
+                fwrite(STDERR, "Expected dev branches, got: " . implode(", ", $bad) . "\n");
+                exit(1);
+            }
+          '
+
+      - name: Run tests
+        run: vendor/bin/phpunit --no-coverage
