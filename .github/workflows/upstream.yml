@@ -50,8 +50,15 @@ jobs:
         with:
           dependency-versions: highest
 
+      # One package per invocation: `composer show a b` reads the second
+      # argument as a version constraint for the first and exits non-zero.
+      # --no-ansi because the colour codes precede the label, so an anchored
+      # grep silently matches nothing without it.
       - name: Show resolved Symfony
-        run: composer show symfony/console symfony/lock | grep -E '^(name|versions)'
+        run: |
+          for pkg in symfony/console symfony/lock; do
+            composer show --no-ansi "$pkg" | grep -E '^(name|versions) '
+          done
 
       - name: Run tests
         run: vendor/bin/phpunit --no-coverage
