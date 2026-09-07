@@ -8,6 +8,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-09-07
+
+No runtime change. Nothing in `src/` executes differently from 3.0.0 — the one
+source edit adds docblocks and no statements. Upgrading is safe without
+reading further.
+
+It is a minor rather than a patch because the `@internal` markers narrow the
+surface this package promises to keep stable, and that is a statement about
+future releases even though it changes nothing today.
+
 ### Documentation
 
 - The fifteen accessors on `Schedule` — `getCommandName()`, `getExpression()`,
@@ -18,6 +28,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   signature changed and nothing was removed, so this breaks no code; it records
   that these may change in a minor release, which is why it is documentation
   rather than a deprecation.
+
+  If you call one of these, nothing happens on upgrade: the marker is advisory,
+  and PHPStan at level 9 reports no error for a consumer calling them from
+  another namespace. Some tooling can be configured to flag such calls, so
+  treat it as notice that the method is not covered by the stability promise
+  rather than as something that will start failing your build.
 
   The fluent configuration methods, `isDue()` and `shouldSkip()` are
   deliberately not marked, nor is anything on `Scheduler` — `getSchedules()`
@@ -32,6 +48,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   green because it never runs. The workflow tests the newest stable Symfony on
   PHP 8.2 and 8.5, plus Symfony's development branches as non-blocking early
   warning.
+
+  Nothing in this section ships to consumers: `.github/` is `export-ignore`d.
+  The installed package differs from 3.0.0 in two files only — this changelog,
+  and the docblocks in `src/Schedule.php`. Stripping comments from the latter
+  yields a token stream identical to 3.0.0, which is the sense in which this
+  release changes no behaviour.
 
 ## [3.0.0] - 2026-09-07
 
